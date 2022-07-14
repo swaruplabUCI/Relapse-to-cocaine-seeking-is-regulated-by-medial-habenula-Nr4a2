@@ -1,0 +1,289 @@
+```{r eval=FALSE}
+
+# conda activate cicero
+
+library(Seurat)
+library(tidyverse)
+library(RColorBrewer)
+library(MetBrewer)
+library(viridis)
+library(patchwork)
+library(cowplot)
+library(grid)
+library(gridExtra)
+theme_set(theme_cowplot())
+
+setwd("/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/integration")
+fig_dir <- 'figures/'
+data_dir <- 'data/'
+
+umap_theme <- theme(
+  axis.line=element_blank(),
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks=element_blank(),
+  axis.title.x=element_blank(),
+  axis.title.y=element_blank(),
+  panel.background=element_blank(),
+  panel.border=element_blank(),
+  panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  plot.background=element_blank()
+)
+
+# load seurat obj
+seurat_obj <- readRDS('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/data/harmony_annotated.rds')
+
+# load hashikawa dataset:
+seurat_hashikawa <- readRDS('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/analysis/test_harmony/data/hashikawa_seurat.rds')
+
+# re-load integrated data:
+seurat_joint <- readRDS('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/integration/data/Nurr2c_hashikawa_integrated_seurat.rds')
+
+# re-load color scheme:
+load('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/data/color_scheme.rda')
+
+```
+
+Set factor levels for clusters
+```{r eval=FALSE}
+
+seurat_obj$annotation <- factor(
+  as.character(seurat_obj$annotation),
+  levels = c(
+    'MHb-1', 'MHb-2', 'MHb-3', 'MHb-4', 'MHb-5',
+    'LHb-1', 'LHb-2', 'LHb-3', 'LHb-4', 'LHb-5', 'LHb-6', 'LHb-7',
+    'PHb-1', 'PHb-2', 'PHb-3', 'PHb-4', 'PHb-5', 'PHb-6',
+    'OPC', 'ODC', 'MG', 'ASC', 'PER', 'END', 'EPD'
+  )
+)
+
+seurat_obj$cell_type<- factor(
+  as.character(seurat_obj$cell_type),
+  levels = c(
+    'MHb-Neuron', 'LHb-Neuron', 'PHb-Neuron',
+    'OPC', 'ODC', 'MG', 'ASC', 'PER', 'END', 'EPD'
+  )
+)
+
+
+seurat_hashikawa$celltype_neuron <- factor(
+  as.character(seurat_hashikawa$celltype_neuron),
+  levels = c(
+    'MHb1', 'MHb2', 'MHb3', 'MHb4', 'MHb5', 'MHb6',
+    'LHb1', 'LHb2', 'LHb3', 'LHb4', 'LHb5', 'LHb6',
+    'PHb Neuron',
+    'OPC1', 'OPC2', 'OPC3', 'Oligo1', 'Oligo2', 'Oligo3',
+    'Microglia', 'Astrocyte1', 'Astrocyte2', 'Mural', 'Endothelial', 'Epen'
+  )
+)
+
+
+```
+
+
+
+Joint Analysis of Hashikawa data with our data using LIGER:
+
+```{r eval=FALSE}
+
+library(rliger)
+
+
+expr_matrix <- GetAssayData(seurat_obj, slot='counts')
+h_expr_matrix <- GetAssayData(seurat_hashikawa, slot='counts')
+
+genes_keep <- intersect(rownames(expr_matrix), rownames(h_expr_matrix))
+
+expression_list <- list(
+  'Nurr2c' = expr_matrix[genes_keep,],
+  'Hashikawa' = h_expr_matrix[genes_keep,]
+)
+
+
+nurr2c_meta <- seurat_obj@meta.data %>%
+  select(c(annotation)) %>%
+  dplyr::rename(cluster = annotation)
+nurr2c_meta$Dataset <- 'Nurr2c'
+
+hash_meta <- seurat_hashikawa@meta.data %>%
+  select(c(celltype_neuron)) %>%
+  dplyr::rename(cluster = celltype_neuron)
+hash_meta$Dataset <- "Hashikawa"
+
+seurat_joint <- Seurat::CreateSeuratObject(
+  cbind(expression_list$Nurr2c, expression_list$Hashikawa),
+  meta.data = rbind(nurr2c_meta, hash_meta)
+)
+
+
+
+# create liger object:
+liger_obj <- createLiger(expression_list)
+liger_obj <- normalize(liger_obj)
+
+pdf("figures/liger_variable_genes.pdf", width=8, height=8)
+liger_obj <- selectGenes(
+  liger_obj,
+  var.thresh =c(0.25, 0.05),
+  do.plot=T
+)
+dev.off()
+liger_obj@var.genes %>% length
+liger_obj <- scaleNotCenter(liger_obj)
+
+# iNMF
+liger_obj <- optimizeALS(liger_obj, k = 30)
+
+# quantile normalization
+liger_obj <- quantile_norm(liger_obj)
+
+saveRDS(liger_obj, paste0(data_dir, 'UCI_hashikawa_integrated_liger.rds'))
+liger_obj <- readRDS(paste0(data_dir, 'UCI_hashikawa_integrated_liger.rds'))
+
+calcAlignment(liger_obj)
+# [1] 0.7776552
+
+# transfer iNMF matrix to seurat obj:
+seurat_joint@reductions$iNMF <- CreateDimReducObject(
+    loadings=t(liger_obj@W),
+    embeddings=liger_obj@H.norm[colnames(seurat_joint),],
+    key="iNMF_",
+    assay="RNA"
+  )
+
+
+# UMAP
+seurat_joint <- RunUMAP(seurat_joint, reduction='iNMF', dims=1:30, n.neighbors=5L, min.dist=0.1)
+
+
+p1 <- DimPlot(seurat_joint, split.by='Dataset', group.by='cluster', label=TRUE) + umap_theme + NoLegend() + theme(plot.title = element_text(hjust = 0.5))
+pdf(paste0(fig_dir, 'umap_integrated_liger_ALS_original_cluster2.pdf'), width=10, height=5)
+p1
+dev.off()
+
+p1 <- DimPlot(seurat_joint, group.by='Dataset') + umap_theme + theme(plot.title = element_text(hjust = 0.5))
+pdf(paste0(fig_dir, 'umap_integrated_liger.pdf'), width=7, height=7)
+p1
+dev.off()
+
+# save integrated data:
+saveRDS(seurat_joint, paste0(data_dir, 'Nurr2c_hashikawa_integrated_seurat.rds'))
+
+```
+
+
+Plot integrated UMAPs for the paper:
+
+```{r eval=FALSE}
+
+library(MetBrewer)
+cluster_colors_hashikawa = paste0(met.brewer("Morgenstern", length(unique(seurat_hashikawa$celltype_neuron))))
+names(cluster_colors_hashikawa) <- unique(seurat_hashikawa$celltype_neuron)
+
+cluster_colors <- c(cluster_colors, cluster_colors_hashikawa)
+
+color_df <- data.frame(
+  group = names(cluster_colors),
+  colour = as.character(cluster_colors)
+)
+
+p <- PlotEmbedding(
+  seurat_joint,
+  group.by = 'cluster',
+  split.by = 'Dataset',
+  label=FALSE,
+  raster=TRUE,
+  raster_dpi = 600,
+  point_size=0.5,
+  raster_scale=0.5,
+  plot_under=TRUE,
+  plot_theme = umap_theme(),
+  color_df = color_df
+)
+
+pdf(paste0(fig_dir, 'umap_integrated.pdf'), width=15, height=5)
+wrap_plots(p, ncol=2) + plot_layout(guides='collect')
+dev.off()
+
+color_df <- data.frame(
+  group = names(cluster_colors_hashikawa),
+  colour = as.character(cluster_colors_hashikawa)
+)
+
+p <- PlotEmbedding(
+  seurat_hashikawa,
+  group.by = 'celltype_neuron',
+  #split.by = 'Dataset',
+  label=TRUE,
+  raster=TRUE,
+  raster_dpi = 600,
+  point_size=0.5,
+  raster_scale=0.5,
+  plot_theme = umap_theme(),
+  color_df = color_df
+)
+
+pdf(paste0(fig_dir, 'umap_hashikawa.pdf'), width=7, height=7)
+p
+dev.off()
+
+
+```
+
+Plot marker genes in hashikawa dataset
+
+```{r eval=FALSE}
+
+degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/DEGs/data/cluster_marker_DEGs.csv')
+degs$group <- factor(
+  degs$group,
+  levels = levels(seurat_obj$annotation)
+)
+
+n_degs <- 7
+plot_genes <- degs %>%
+  arrange(group) %>%
+  subset(p_val_adj <= 0.05) %>%
+  group_by(group) %>%
+  top_n(n_degs, wt=avg_log2FC)  %>%
+  .$gene
+
+
+# set random seed
+set.seed(42)
+
+seurat_hashikawa$barcode <- colnames(seurat_hashikawa)
+temp <- seurat_hashikawa@meta.data %>% group_by(celltype_neuron) %>% sample_n(100)
+
+seurat_hashikawa$ordered_clusters <- factor(
+  as.character(seurat_hashikawa$celltype_neuron),
+  levels = c(
+    'MHb1', 'MHb2', 'MHb3', 'MHb4', 'MHb5', 'MHb6',
+    'LHb1', 'LHb2', 'LHb3', 'LHb4', 'LHb5', 'LHb6',
+    'PHb Neuron',
+    'OPC1', 'OPC2', 'OPC3',
+    'Oligo1', 'Oligo2', 'Oligo3',
+    'Microglia',
+    'Astrocyte1', 'Astrocyte2',
+    'Mural', 'Endothelial', 'Epen'
+  )
+)
+
+seurat_hashikawa$ordered_clusters <- fct_rev(seurat_hashikawa$ordered_clusters)
+
+
+p <- DoHeatmap(
+  seurat_hashikawa,
+  features=unlist(plot_genes),
+  group.by='ordered_clusters',
+  raster=TRUE, slot='scale.data',
+  group.colors=cluster_colors_hashikawa
+) + theme(axis.text.y = element_text(face='italic', size=9))
+
+pdf(paste0(fig_dir, 'marker_gene_heatmap_hashikawa.pdf'), width=16, height=14, useDingbats=FALSE)
+p
+dev.off()
+
+
+```

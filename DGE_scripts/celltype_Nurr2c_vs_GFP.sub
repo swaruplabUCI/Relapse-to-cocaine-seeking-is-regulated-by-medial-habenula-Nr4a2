@@ -1,0 +1,46 @@
+#!/bin/bash
+#SBATCH --job-name=ct_Nurr2c
+#SBATCH -p standard
+#SBATCH -A vswarup_lab
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --error=slurm-%J.err
+#SBATCH --mem 48G
+#SBATCH --array=1-25
+#SBATCH --time=72:00:00
+
+source ~/.bashrc
+conda activate cicero
+
+# seurat object path:
+seurat="/dfs3b/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/data/harmony_annotated.rds"
+outdir="/dfs3b/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/DEGs/celltype_Nurr2c_vs_GFP/"
+type="conditions"
+name="celltype_Nurr2c_vs_GFP"
+condition="Group"
+group1="Nurr2c"
+group2="GFP"
+cluster="cell_type"
+latent="total_counts,Assignment"
+
+mkdir $outdir
+
+# launch R script:
+Rscript --vanilla ~/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/bin/parallel_DEGs.R \
+    --seurat $seurat \
+    --outdir $outdir \
+    --type $type \
+    --cluster $cluster \
+    --condition $condition \
+    --name $name \
+    --index $SLURM_ARRAY_TASK_ID \
+    --group1 $group1 \
+    --group2 $group2 \
+    --test "MAST" \
+    --pos "FALSE" \
+    --pct 0 \
+    --logfc 0 \
+    --verbose "TRUE" \
+    --latent $latent \
+    --cores 16

@@ -1,0 +1,51 @@
+---
+title: Convert from Scanpy to Seurat
+author: Samuel Morabito
+date: "`r Sys.time()`"
+output:
+  html_document:
+    theme: lumen
+    toc: true
+    toc_float: true
+    toc_collapsed: false
+    toc_depth: 3
+---
+
+Here I use SeuratDisk to load data from the anndata format that has been processed
+in Scanpy, and convert it to Seurat format for downstream use.
+
+```{r eval=FALSE}
+
+library(SeuratDisk)
+library(Seurat)
+library(tidyverse)
+
+setwd("/dfs3b/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/analysis/test_harmony")
+
+SeuratDisk::Convert('data/harmony_processed_with_counts.h5ad', dest='h5seurat', overwrite=TRUE)
+SeuratDisk::Convert('data/harmony_unprocessed_with_counts.h5ad', dest='h5seurat', overwrite=TRUE)
+
+seurat_obj <- LoadH5Seurat('data/harmony_processed_with_counts.h5seurat', assays='RNA')
+seurat_counts <- LoadH5Seurat('data/harmony_unprocessed_with_counts.h5seurat', assays='RNA')
+
+# set the counts, normalize:
+seurat_obj <- SetAssayData(seurat_obj, slot='counts', new.data = GetAssayData(seurat_counts))
+seurat_obj <- NormalizeData(seurat_obj)
+
+# load var table:
+var <- read.csv('data/harmony_processed_varTable.csv')
+var_genes <- var %>% subset(highly_variable == 'True') %>% .$X %>% as.character
+VariableFeatures(seurat_obj) <-  var_genes
+
+# save the Seurat object:
+saveRDS(seurat_obj, 'data/cocaine_mouse_seurat.rds')
+
+# plot expression of one gene
+p1 <- VlnPlot(seurat_obj, features='Nr4a2', group.by='leiden', pt.size=0, slot='data') + NoLegend()
+pdf('figures/Nr4a2_vln.pdf', width=10, height=3)
+p1
+dev.off()
+
+
+
+```
