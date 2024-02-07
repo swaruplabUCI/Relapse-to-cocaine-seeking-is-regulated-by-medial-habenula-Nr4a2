@@ -1,0 +1,39 @@
+#!/bin/bash
+#SBATCH --job-name=bigwig
+#SBATCH -p standard
+#SBATCH -A vswarup_lab
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --error=slurm-%J.err
+#SBATCH --mem 64G
+#SBATCH --array=0-108
+#SBATCH --time=2:00:00
+
+# activate conda env with sinto + deeptools installed
+source ~/.bashrc
+conda activate scvi-env
+module load samtools
+
+# directory with merged bams
+bam_dir="/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/trackhubs/data/merged_bams/"
+
+# directory where we will output bigwigs
+output_dir="/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/trackhubs/data/bigwigs/"
+# mkdir $output_dir
+
+# select barcodes file based on the task array:
+files=($(ls $bam_dir/*.bam))
+
+# get current sample based on the SLURM job ID
+let index="$SLURM_ARRAY_TASK_ID"
+file=${files[$index]}
+echo $file
+
+name=$(basename $file .bam)
+
+# convert bam to bigwig with bamCoverage deeptools function
+bamCoverage \
+  -b $file \
+  -o $output_dir$name.bw \
+  -p 32 # number of processors

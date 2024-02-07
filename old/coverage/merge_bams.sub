@@ -1,0 +1,41 @@
+#!/bin/bash
+
+#SBATCH --job-name=bamerge     ## Name of the job.
+#SBATCH -p standard          ## partition/queue name
+#SBATCH -A vswarup_lab           ## partition/queue name
+#SBATCH --nodes=1            ## (-N) number of nodes to use
+#SBATCH --ntasks=1          ## (-n) number of tasks to launch
+#SBATCH --cpus-per-task=32    ## number of cores the job needs
+#SBATCH --error=slurm-%J.err ## error log file
+#SBATCH --mem 64G              ## request 64GB of memory
+#SBATCH --array=0-55
+#SBATCH --time=72:00:00
+
+module load samtools
+
+cd /dfs3b/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/trackhubs/
+
+# directory with .tsv files contgaining lists of bams to merge
+bam_list_dir="/dfs3b/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/trackhubs/data/bam_merge_lists/"
+
+# merged bam output dir
+out_dir="/dfs3b/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/trackhubs/data/merged_bams/"
+mkdir $out_dir
+
+# select barcodes file based on the task array:
+groups=($(ls $bam_list_dir))
+
+# get current sample based on the SLURM job ID
+let index="$SLURM_ARRAY_TASK_ID"
+group=${groups[$index]}
+group=$(basename $group .tsv)
+echo $group
+
+# merge
+samtools merge \
+  --threads 32 \
+  -b $bam_list_dir$group".tsv" \
+  $out_dir$group".bam"
+
+# index:
+samtools index -@ 32 $out_dir$group".bam"

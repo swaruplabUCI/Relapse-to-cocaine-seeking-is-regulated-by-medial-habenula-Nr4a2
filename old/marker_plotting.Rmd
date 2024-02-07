@@ -1,0 +1,659 @@
+```{r eval=FALSE}
+
+# conda activate cicero
+
+library(Seurat)
+library(tidyverse)
+library(RColorBrewer)
+library(MetBrewer)
+library(viridis)
+library(patchwork)
+library(cowplot)
+library(grid)
+library(gridExtra)
+theme_set(theme_cowplot())
+
+setwd("/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/")
+fig_dir <- 'figures/'
+data_dir <- ='data/'
+
+umap_theme <- theme(
+  axis.line=element_blank(),
+  axis.text.x=element_blank(),
+  axis.text.y=element_blank(),
+  axis.ticks=element_blank(),
+  axis.title.x=element_blank(),
+  axis.title.y=element_blank(),
+  panel.background=element_blank(),
+  panel.border=element_blank(),
+  panel.grid.major=element_blank(),
+  panel.grid.minor=element_blank(),
+  plot.background=element_blank()
+)
+
+# load seurat obj
+seurat_obj <- readRDS('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/data/harmony_annotated.rds')
+
+# re-load color scheme:
+load('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/data/color_scheme.rda')
+
+
+```
+
+
+Set factor levels:
+
+```{r eval=FALSE}
+
+
+seurat_obj$annotation <- factor(
+  as.character(seurat_obj$annotation),
+  levels = c(
+    'MHb-1', 'MHb-2', 'MHb-3', 'MHb-4', 'MHb-5',
+    'LHb-1', 'LHb-2', 'LHb-3', 'LHb-4', 'LHb-5', 'LHb-6', 'LHb-7',
+    'PHb-1', 'PHb-2', 'PHb-3', 'PHb-4', 'PHb-5', 'PHb-6',
+    'OPC', 'ODC', 'MG', 'ASC', 'PER', 'END', 'EPD'
+  )
+)
+
+seurat_obj$cell_type<- factor(
+  as.character(seurat_obj$cell_type),
+  levels = c(
+    'MHb-Neuron', 'LHb-Neuron', 'PHb-Neuron',
+    'OPC', 'ODC', 'MG', 'ASC', 'PER', 'END', 'EPD'
+  )
+)
+
+table(seurat_obj$Sample, seurat_obj$Assignment)
+table(seurat_obj$Sample, seurat_obj$Group)
+
+
+seurat_obj$Sample<- factor(
+  as.character(seurat_obj$Sample),
+  levels = c(
+    'Sample-1', 'Sample-2', 'Sample-3',
+    'Sample-4', 'Sample-5', 'Sample-8',
+    'Sample-11', 'Sample-14', 'Sample-16',
+    'Sample-9', 'Sample-13'
+  )
+)
+
+seurat_obj$Group <- factor(
+  as.character(seurat_obj$Group),
+  c('Nurr2c', 'GFP')
+)
+
+# helper function to shuffle points when plotting:
+shuffle_points <- function(df){
+  return(df[sample(1:dim(df)[1], dim(df)[1]),])
+}
+
+```
+
+
+
+Combine the cluster markers into one table :
+
+```{r eval=FALSE}
+
+DEG_dir <- "/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/DEGs/cluster_markers/"
+
+DEG_tests <- dir(DEG_dir)
+
+combined <- Reduce(rbind, lapply(DEG_tests, function(file){
+  read.csv(paste0(DEG_dir, '/', file))
+}))
+
+combined$Nr4a2 <- ifelse(combined$gene %in% Nr4a2_targets, TRUE, FALSE)
+
+write.csv(
+  combined,
+  file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/DEGs/data/cluster_marker_DEGs.csv',
+  quote=FALSE, row.names=FALSE
+)
+
+
+```
+
+Marker gene heatmap
+
+```{r eval=FALSE}
+
+fig_dir <- '/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/figures/for_paper/'
+
+
+degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/DEGs/data/cluster_marker_DEGs.csv')
+degs$group <- factor(
+  degs$group,
+  levels = levels(seurat_obj$annotation)
+)
+
+n_degs <- 5
+plot_genes <- degs %>%
+  arrange(group) %>%
+  subset(p_val_adj <= 0.05) %>%
+  group_by(group) %>%
+  top_n(n_degs, wt=avg_log2FC)  %>%
+  .$gene
+
+
+# set random seed
+set.seed(42)
+
+seurat_obj$barcode <- colnames(seurat_obj)
+temp <- seurat_obj@meta.data %>% group_by(annotation) %>% sample_n(300)
+
+seurat_obj$ordered_clusters <- fct_rev(seurat_obj$annotation)
+p <- DoHeatmap(
+  seurat_obj %>% subset(barcode %in% temp$barcode),
+  features=unlist(plot_genes),
+  group.by='annotation',
+  raster=TRUE, slot='scale.data',
+  group.colors=cluster_colors
+)
+
+pdf(paste0(fig_dir, 'marker_gene_heatmap.pdf'), width=16, height=8, useDingbats=FALSE)
+p
+dev.off()
+
+```
+
+
+Plot known marker genes:
+
+```{r eval=FALSE}
+
+dir.create(paste0(fig_dir, 'markers/'))
+
+colfunc <- colorRampPalette(c('gray90', brewer.pal(9, 'Purples' )[3:9]))
+
+
+genes <- c(
+  'Nr4a2',
+  'Chat',
+  'Tac2'
+)
+
+for(cur_gene in genes){
+
+  print(cur_gene)
+
+  p <- FeaturePlot(seurat_obj, features=cur_gene, order=TRUE) +
+    scale_color_gradientn(colors=colfunc(256)) +
+    umap_theme
+
+  pdf(paste0(fig_dir, 'markers/', cur_gene, '_featureplot.pdf'), width=6, height=5)
+  print(p)
+  dev.off()
+
+  png(paste0(fig_dir, 'markers/', cur_gene, '_featureplot.png'), width=5, height=5, res=500, units='in')
+  p <- p + ggtitle('') + NoLegend()
+  print(p)
+  dev.off()
+
+}
+
+
+```
+
+Mhb marker gene analysis
+
+```{r eval=FALSE}
+
+seurat_mhb <- subset(seurat_obj, cell_type == 'MHb-Neuron')
+Idents(seurat_mhb) <- seurat_mhb$annotation
+
+markers <- FindAllMarkers(
+  seurat_mhb,
+  test.use = "MAST",
+  min.pct = 0.2,
+  logfc.threshold = 0.5,
+  only.pos =TRUE
+)
+
+write.csv(markers, quote=FALSE, file=paste0(data_dir, 'mhb_markers.csv'))
+markers <- read.csv(file=paste0(data_dir, 'mhb_markers.csv'))
+
+
+# remove mt and rb genes:
+
+markers <- markers[!grepl("^mt-", markers$gene),]
+
+n_degs <- 15
+plot_genes <- markers %>%
+  arrange(cluster) %>%
+  subset(p_val_adj <= 0.05) %>%
+  group_by(cluster) %>%
+  top_n(n_degs, wt=avg_log2FC)  %>%
+  .$gene
+
+
+
+# set random seed
+set.seed(42)
+
+seurat_mhb$barcode <- colnames(seurat_mhb)
+temp <- seurat_mhb@meta.data %>% group_by(annotation) %>% sample_n(300)
+
+seurat_mhb$ordered_clusters <- fct_rev(seurat_mhb$annotation)
+p <- DoHeatmap(
+  seurat_mhb %>% subset(barcode %in% temp$barcode),
+  features=unlist(plot_genes),
+  group.by='annotation',
+  raster=TRUE, slot='scale.data',
+  group.colors=cluster_colors
+)+ theme(axis.text.y = element_text(face='italic'))
+
+pdf(paste0(fig_dir, 'mhb_marker_gene_heatmap.pdf'), width=7, height=12, useDingbats=FALSE)
+p
+dev.off()
+
+subset(markers, cluster == 'MHb-5') %>% arrange(avg_log2FC)
+
+
+```
+
+Lhb markers
+
+```{r eval=FALSE}
+
+seurat_lhb <- subset(seurat_obj, cell_type == 'LHb-Neuron')
+Idents(seurat_lhb) <- seurat_lhb$annotation
+
+markers <- FindAllMarkers(
+  seurat_lhb,
+  test.use = "MAST",
+  min.pct = 0.2,
+  logfc.threshold = 0.5,
+  only.pos =TRUE
+)
+
+write.csv(markers, quote=FALSE, file=paste0(data_dir, 'lhb_markers.csv'))
+markers <- read.csv(file=paste0(data_dir, 'lhb_markers.csv'))
+
+
+markers <- markers[!grepl("^mt-", markers$gene),]
+
+n_degs <- 10
+plot_genes <- markers %>%
+  arrange(cluster) %>%
+  subset(p_val_adj <= 0.05) %>%
+  group_by(cluster) %>%
+  top_n(n_degs, wt=avg_log2FC)  %>%
+  .$gene
+
+
+
+# set random seed
+set.seed(42)
+
+seurat_lhb$barcode <- colnames(seurat_lhb)
+temp <- seurat_lhb@meta.data %>% group_by(annotation) %>% sample_n(300)
+
+seurat_lhb$ordered_clusters <- fct_rev(seurat_lhb$annotation)
+p <- DoHeatmap(
+  seurat_lhb %>% subset(barcode %in% temp$barcode),
+  features=unlist(plot_genes),
+  group.by='annotation',
+  raster=TRUE, slot='scale.data',
+  group.colors=cluster_colors
+)+ theme(axis.text.y = element_text(face='italic'))
+
+pdf(paste0(fig_dir, 'lhb_marker_gene_heatmap.pdf'), width=7, height=12, useDingbats=FALSE)
+p
+dev.off()
+
+subset(markers, cluster == 'MHb-5') %>% arrange(avg_log2FC)
+
+
+```
+
+
+Phb markers
+
+```{r eval=FALSE}
+
+seurat_phb <- subset(seurat_obj, cell_type == 'PHb-Neuron')
+Idents(seurat_phb) <- seurat_phb$annotation
+
+markers <- FindAllMarkers(
+  seurat_phb,
+  test.use = "MAST",
+  min.pct = 0.2,
+  logfc.threshold = 0.5,
+  only.pos =TRUE
+)
+
+write.csv(markers, quote=FALSE, file=paste0(data_dir, 'phb_markers.csv'))
+markers <- read.csv(file=paste0(data_dir, 'phb_markers.csv'))
+
+markers <- markers[!grepl("^mt-", markers$gene),]
+
+n_degs <- 10
+plot_genes <- markers %>%
+  arrange(cluster) %>%
+  subset(p_val_adj <= 0.05) %>%
+  group_by(cluster) %>%
+  top_n(n_degs, wt=avg_log2FC)  %>%
+  .$gene
+
+
+
+# set random seed
+set.seed(42)
+
+seurat_phb$barcode <- colnames(seurat_phb)
+temp <- seurat_phb@meta.data %>% group_by(annotation) %>% sample_n(300)
+
+seurat_phb$ordered_clusters <- fct_rev(seurat_phb$annotation)
+p <- DoHeatmap(
+  seurat_phb %>% subset(barcode %in% temp$barcode),
+  features=unlist(plot_genes),
+  group.by='annotation',
+  raster=TRUE, slot='scale.data',
+  group.colors=cluster_colors
+) + theme(axis.text.y = element_text(face='italic'))
+
+pdf(paste0(fig_dir, 'phb_marker_gene_heatmap.pdf'), width=7, height=12, useDingbats=FALSE)
+p
+dev.off()
+
+subset(markers, cluster == 'MHb-5') %>% arrange(avg_log2FC)
+
+
+```
+
+
+Mhb marker gene analysis
+
+```{r eval=FALSE}
+
+seurat_mhb <- subset(seurat_obj, cell_type %in% c("LHb-Neuron", "MHb-Neuron"))
+Idents(seurat_mhb) <- seurat_mhb$cell_type
+
+markers <- FindMarkers(
+  seurat_mhb,
+  ident.1 = "MHb-Neuron",
+  test.use = "MAST",
+  min.pct = 0.2,
+  logfc.threshold = 0.5,
+  only.pos =FALSE
+)
+
+write.csv(markers, quote=FALSE, file=paste0(data_dir, 'mhb_vs_markers.csv'))
+markers <- read.csv(file=paste0(data_dir, 'mhb_vs_markers.csv'))
+
+markers %>% top_n(25, wt=avg_log2FC) %>% arrange(avg_log2FC)
+markers %>% top_n(-25, wt=avg_log2FC) %>% arrange(avg_log2FC)
+
+# remove mt and rb genes:
+
+markers <- markers[!grepl("^mt-", markers$gene),]
+
+n_degs <- 15
+plot_genes <- markers %>%
+  arrange(cluster) %>%
+  subset(p_val_adj <= 0.05) %>%
+  group_by(cluster) %>%
+  top_n(n_degs, wt=avg_log2FC)  %>%
+  .$gene
+
+
+
+# set random seed
+set.seed(42)
+
+seurat_mhb$barcode <- colnames(seurat_mhb)
+temp <- seurat_mhb@meta.data %>% group_by(annotation) %>% sample_n(300)
+
+seurat_mhb$ordered_clusters <- fct_rev(seurat_mhb$annotation)
+p <- DoHeatmap(
+  seurat_mhb %>% subset(barcode %in% temp$barcode),
+  features=unlist(plot_genes),
+  group.by='annotation',
+  raster=TRUE, slot='scale.data',
+  group.colors=cluster_colors
+)+ theme(axis.text.y = element_text(face='italic'))
+
+pdf(paste0(fig_dir, 'mhb_marker_gene_heatmap.pdf'), width=7, height=12, useDingbats=FALSE)
+p
+dev.off()
+
+subset(markers, cluster == 'MHb-5') %>% arrange(avg_log2FC)
+
+
+```
+
+
+RRHO
+
+```{r eval=FALSE}
+
+
+library(RRHO)
+library(viridis)
+library(ggpubr)
+
+
+degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/DEGs/data/celltype_Nurr2c_vs_GFP.csv')
+degs$group <- factor(
+  degs$group,
+  levels = levels(seurat_obj$cell_type)
+)
+name <- 'celltype'
+
+# add Nr4a2 targets
+target_genes <- GetMotifTargets(seurat_obj)
+nr4a2_targets <- target_genes$NR4A2
+degs$Nr4a2 <- degs$gene %in% nr4a2_targets
+
+# lowest non-zero value
+lowest <- degs %>% subset(p_val_adj != 0) %>% top_n(-1, wt=p_val_adj) %>% .$p_val_adj
+degs$p_val_adj <- ifelse(degs$p_val_adj == 0, lowest, degs$p_val_adj)
+
+groups <- c('MHb-Neuron','LHb-Neuron', 'PHb-Neuron')
+pairs <- combn(groups, 2)
+
+
+# plot settings
+rrho_plot_list <- list()
+cor_list <- c()
+NR4A2 <- TRUE
+#rrho_maxval <- 500
+rrho_maxval <- 350
+
+colfunc <- inferno
+
+for(i in 1:ncol(pairs)){
+
+  cur_pair <- pairs[,i]
+  name <- paste(cur_pair, collapse='_')
+  print(name)
+  cur_x <- cur_pair[1];  cur_y <- cur_pair[2]
+
+  cur_degs_x <- subset(degs, group == cur_x & Nr4a2 == NR4A2 )
+  cur_degs_y <- subset(degs, group == cur_y & Nr4a2 == NR4A2 )
+
+  # make sure they are in the same order:
+  rownames(cur_degs_x) <- cur_degs_x$gene
+  rownames(cur_degs_y) <- cur_degs_y$gene
+  cur_degs_y <- cur_degs_y[cur_degs_x$gene,]
+
+  # join the two dataframes
+  plot_df <- dplyr::inner_join(cur_degs_x, cur_degs_y, by = 'gene')
+
+  cur_cor <-  cor(x=as.numeric(plot_df$avg_log2FC.x), y=as.numeric(plot_df$avg_log2FC.y))
+cor_list <- c(cor_list, cur_cor)
+
+  # set up gene lists
+  gl1 <- plot_df[,c('gene', 'avg_log2FC.x')]
+  gl2 <- plot_df[,c('gene', 'avg_log2FC.y')]
+
+  # run rrho
+  test <- RRHO(gl1, gl2, alternative='enrichment', BY=TRUE)
+  overlap_df <- reshape2::melt(test$hypermat.by)
+  #subset(overlap_df, value != Inf) %>% .$value %>% max
+  overlap_df$value <- ifelse(overlap_df$value > rrho_maxval, rrho_maxval, overlap_df$value)
+
+  # plot rrho heatmap
+  p <- ggplot(overlap_df, aes(x=Var1, y=Var2, fill=value, color=value)) +
+    ggrastr::rasterise(geom_tile(), dpi=500) +
+    scale_fill_gradientn(colors=colfunc(256), limits=c(0, rrho_maxval)) +
+    scale_color_gradientn(colors=colfunc(256), limits=c(0, rrho_maxval)) +
+    theme(
+      plot.title=element_text(hjust=0.5, size=5, face='plain'),
+      axis.line=element_blank(),
+      axis.ticks=element_blank(),
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.title = element_blank(),
+      plot.margin=margin(0,0,0,0)
+    ) + coord_equal() + ggtitle(paste0(name, '\nR=', signif(as.numeric(cur_cor),3)))
+
+  rrho_plot_list[[name]] <- p
+
+}
+
+
+# names(cor_list) <- names(plot_list)
+# plot_list <- plot_list[rev(order(cor_list))]
+# rrho_plot_list <- rrho_plot_list[rev(order(cor_list))]
+
+pdf(paste0(fig_dir, 'deg_rrho_combined_nr4a2.pdf'), width=3, height=7)
+wrap_plots(rrho_plot_list, ncol=1) + plot_layout(guides='collect')
+dev.off()
+
+pdf(paste0(fig_dir, 'deg_rrho_combined_other.pdf'), width=3, height=7)
+wrap_plots(rrho_plot_list, ncol=1) + plot_layout(guides='collect')
+dev.off()
+
+```
+
+Upset plot for Nurr2c vs GFP genes
+
+```{r eval=FALSE}
+library(UpSetR)
+
+# fold-change cutoff:
+fc_cutoff <- 0.25
+groups <- c( "LHb-Neuron", "MHb-Neuron", "PHb-Neuron")
+degs$gene <- factor(as.character(degs$gene), levels=unique(degs$gene))
+
+upset_list <- list()
+names <- c()
+for(cur_group in groups){
+  cur_df_up <- degs %>% subset(group == cur_group & p_val_adj < 0.05 & avg_log2FC > fc_cutoff)
+  cur_df_down <- degs %>% subset(group == cur_group & p_val_adj < 0.05 & avg_log2FC < -fc_cutoff)
+  upset_list[[paste0(cur_group, '_down')]] <- table(cur_df_down$gene)
+  upset_list[[paste0(cur_group, '_up')]] <- table(cur_df_up$gene)
+}
+
+tmp <- c(paste0(groups, '_up'), paste0(groups, '_down'))
+names <- tmp[order(tmp)]
+
+# combine into one df
+upset_df <- as.data.frame(Reduce(cbind, upset_list))
+colnames(upset_df) <- names
+
+# remove entries with all 0
+upset_df <- upset_df[rowSums(upset_df) > 0,]
+
+cur_colors <- celltype_colors[groups]
+names(cur_colors) <- paste0(names(cur_colors), '_up')
+#cur_colors_down <- unlist(lapply(celltype_colors[groups], scales::muted))
+cur_colors_down <- celltype_colors[groups]
+names(cur_colors_down) <- paste0(names(cur_colors_down), '_down')
+cur_colors <- c(cur_colors, cur_colors_down)
+cur_colors <- cur_colors[colnames(upset_df)]
+
+p <- UpSetR::upset(
+  upset_df,
+  sets=colnames(upset_df),
+  group.by='sets',
+  cutoff=5,
+  sets.bar.color=cur_colors,
+)
+
+
+pdf(paste0(fig_dir, 'deg_upset.pdf'), width=5, height=4)
+p
+dev.off()
+
+# top_link_df <- top_links_joint %>% subset(celltype != 'PER.END')
+
+top_link_df$celltype <- as.character(top_link_df$celltype)
+top_link_df$target_gene <- factor(as.character(top_link_df$Peak1_nearestGene), levels=unique(top_link_df$Peak1_nearestGene))
+
+top_link_df$peak_gene <- paste0(top_link_df$Peak2, '_', top_link_df$Peak1_nearestGene)
+top_links_unique <- distinct(top_link_df, peak_gene, .keep_all=TRUE)
+
+
+# set up upset DF
+# row = gene, col = celltype, value = 0/1 for enhancer interaction
+upset_list <- list()
+clusters <- unique(top_links_unique$celltype)
+for(ct in clusters){
+  test_df <- top_links_unique %>% subset(celltype == ct)
+  upset_list[[ct]] <- table(test_df$target_gene)
+}
+
+# combine into one df
+upset_df <- as.data.frame(Reduce(cbind, upset_list))
+colnames(upset_df) <- clusters
+
+# remove entries with all 0
+upset_df <- upset_df[rowSums(upset_df) > 0,]
+
+# convert to binary
+upset_df[upset_df > 0] <- 1
+
+cur_color_scheme <- unlist(color_scheme_snATAC_celltype)[colSums(upset_df) %>% order] %>% rev
+p <- upset(
+  upset_df,
+  sets=as.character(unique(top_link_df$celltype)),
+  group.by='sets',
+  cutoff=4,
+  sets.bar.color=cur_color_scheme,
+)
+
+
+pdf('figures/target_gene_upset4.pdf', width=5, height=4, useDingbats=FALSE)
+p
+dev.off()
+
+
+
+
+
+
+```
+
+euler venn diagram
+
+```{r eval=FALSE}
+
+
+lhb_genes <- degs %>% subset(group == 'LHb-Neuron' & avg_log2FC < -0.25 & Nr4a2) %>% .$gene %>% as.character()
+mhb_genes <- degs %>% subset(group == 'MHb-Neuron' & avg_log2FC < -0.25 & Nr4a2) %>% .$gene %>% as.character()
+phb_genes <- degs %>% subset(group == 'PHb-Neuron' & avg_log2FC < -0.25 & Nr4a2) %>% .$gene %>% as.character()
+
+
+library(eulerr)
+
+overlap_list <- c(
+  'LHb' = length(setdiff(lhb_genes, c(mhb_genes, phb_genes))),
+  'MHb' = length(setdiff(mhb_genes, c(lhb_genes, phb_genes))),
+  'PHb' = length(setdiff(phb_genes, c(lhb_genes, mhb_genes))),
+  'LHb&PHb' =  length(unique(intersect(lhb_genes, phb_genes))),
+  'MHb&PHb' =  length(unique(intersect(mhb_genes, phb_genes))),
+  'LHb&MHb' =  length(unique(intersect(lhb_genes, mhb_genes))),
+  'LHb&MHb&PHb' =  length(Reduce(intersect, list(lhb_genes, mhb_genes, phb_genes)))
+)
+
+
+
+pdf(paste0(fig_dir, 'eulerr_overlaps.pdf'), width=4, height=4)
+plot(euler(overlap_list), quantities = TRUE)
+dev.off()
+
+```

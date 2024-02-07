@@ -1,0 +1,190 @@
+
+Assemble Seurat object from the individual pieces from Scanpy/SCVI analysis
+Not using SeuratDisk because it kinda scares me
+```{r eval=FALSE}
+
+# conda activate cicero
+library(Seurat)
+library(Matrix)
+library(tidyverse)
+library(cowplot)
+library(patchwork)
+theme_set(theme_cowplot())
+
+
+setwd('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/')
+fig_dir <- 'figures/'
+data_dir <- 'data/'
+
+scanpy_data <-  "/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/data/"
+
+# load the UMI counts gene expression matrix
+X <- Matrix::readMM(paste0(scanpy_data,'harmony_annotated_integration_counts.mtx'))
+
+# load the harmony matrix
+harmony <- read.table(paste0(scanpy_data, 'harmony_annotated_integration_harmony.csv'), sep=',', header=TRUE, row.names=1)
+
+# load the cell & gene metadata table:
+cell_meta <- read.csv(paste0(scanpy_data, 'harmony_annotated_integration_cell_meta.csv'), sep=',')
+rownames(cell_meta) <- cell_meta$X; cell_meta <- cell_meta %>% select(-c(X))
+gene_meta <- read.table(paste0(scanpy_data, 'harmony_annotated_integration_gene_meta.csv'), sep=',', header=TRUE, row.names=1)
+
+# get the umap from cell_meta:
+umap <- cell_meta[,c('UMAP_1', 'UMAP_2')]
+
+# set the rownames and colnames for the expression matrix:
+# for Seurat, rows of X are genes, cols of X are cells
+colnames(X) <- rownames(cell_meta)
+rownames(X) <- rownames(gene_meta)
+rownames(harmony) <- rownames(cell_meta)
+rownames(umap) <- rownames(cell_meta)
+
+
+# create a Seruat object:
+seurat_obj <- Seurat::CreateSeuratObject(
+  counts = X,
+  meta.data = cell_meta,
+  assay = "RNA",
+  project = "habenula",
+  min.features = 0,
+  min.cells = 0
+)
+
+# set harmmony
+seurat_obj@reductions$harmony <- Seurat::CreateDimReducObject(
+  embeddings = as.matrix(harmony),
+  key="harmony",
+  assay="RNA"
+)
+
+# set UMAP
+seurat_obj@reductions$umap <- Seurat::CreateDimReducObject(
+  embeddings = as.matrix(umap),
+  key="UMAP",
+  assay="RNA"
+)
+
+# plot the UMAP to test:
+source('/dfs7/swaruplab/smorabit/analysis/scWGCNA/bin/spatial_functions.R')
+
+
+plot_list <- PlotEmbedding(
+    seurat_obj,
+    group.by = 'annotation',
+    split.by = 'Assignment',
+    plot_under=TRUE,
+    raster_dpi = 500,
+    raster_scale=0.5, point_size=0.5,
+    label=TRUE,
+    plot_theme =  NoLegend()
+)
+
+
+pdf(paste0(fig_dir, 'umap_test.pdf'), height=4, width=12)
+print(wrap_plots(plot_list, ncol=3))
+dev.off()
+
+
+################################################################################
+# Set factor levels for important meta-data:
+################################################################################
+
+colnames(seurat_obj@meta.data)
+
+# Batch:
+seurat_obj$Assignment <- factor(
+    as.character(seurat_obj$Assignment),
+    levels = c('Group1', 'Group2', 'Group3')
+)
+
+# sample:
+batches <- levels(seurat_obj$Assignment)
+sample_levels <- c()
+for(cur_batch in batches){
+    samples <- subset(seurat_obj@meta.data, Assignment == cur_batch) %>% .$Sample %>% unique
+    samples <- samples[order(samples)]
+    sample_levels <- c(sample_levels, samples)
+}
+seurat_obj$Sample <- factor(as.character(seurat_obj$Sample), levels = sample_levels)
+
+# condition 
+seurat_obj$Group<- factor(
+    as.character(seurat_obj$Group),
+    levels = c('Nurr2c', 'GFP', 'NN', 'NGFP')
+)
+
+# cell type  
+seurat_obj$cell_type <- factor(
+    as.character(seurat_obj$cell_type),
+    levels = c(
+        'MHb-Neuron', 'LHb-Neuron', 'PHb-Neuron',
+        'OPC', 'ODC', 'MG', 'ASC', 
+        'EPD', 'PER', 'END', 'FBR'
+    )
+)
+
+# annotation
+seurat_obj$annotation <- factor(
+    as.character(seurat_obj$annotation),
+    levels = c(
+        'MHb-1', 'MHb-2', 'MHb-3', 'MHb-4', 'MHb-5',
+        'LHb-1', 'LHb-2', 'LHb-3', 'LHb-4', 'LHb-5', 'LHb-6',
+        'PHb-1', 'PHb-2', 'PHb-3', 'PHb-4',
+        'OPC', 'ODC1', 'ODC2', 'ODC3',
+        'MG', 'ASC1', 'ASC2', 'EPD', 'PER', 'END', 'FBR'
+    )
+)
+
+# make a new column for "cell identity" which we will use for the DEGs.
+# will basically merge PER,END,FBR -> VASC, and collapse the subclusters for the glia.
+seurat_obj$cell_identity <- ifelse(
+    seurat_obj$cell_type %in% c('MHb-Neuron', 'LHb-Neuron', 'PHb-Neuron'),
+    as.character(seurat_obj$annotation),
+    as.character(seurat_obj$cell_type)
+)
+seurat_obj$cell_identity <- ifelse(
+    seurat_obj$cell_identity %in% c('PER', 'END', 'FBR'),
+    'VASC',
+    seurat_obj$cell_identity
+)
+seurat_obj$cell_identity <- factor(
+    as.character(seurat_obj$cell_identity),
+    levels = c(
+        'MHb-1', 'MHb-2', 'MHb-3', 'MHb-4', 'MHb-5',
+        'LHb-1', 'LHb-2', 'LHb-3', 'LHb-4', 'LHb-5', 'LHb-6',
+        'PHb-1', 'PHb-2', 'PHb-3', 'PHb-4',
+        'OPC', 'ODC', 'MG', 'ASC', 'EPD', 'VASC'
+    )
+)
+
+
+plot_list <- PlotEmbedding(
+    seurat_obj,
+    group.by = 'cell_identity',
+    split.by = 'Assignment',
+    plot_under=TRUE,
+    raster_dpi = 500,
+    raster_scale=0.5, point_size=0.5,
+    label=TRUE,
+    plot_theme =  NoLegend() + hdWGCNA::umap_theme()
+)
+
+pdf(paste0(fig_dir, 'umap_test2.pdf'), height=4, width=12)
+print(wrap_plots(plot_list, ncol=3))
+dev.off()
+
+
+# set Idents to cell identity:
+Idents(seurat_obj) <- seurat_obj$cell_identity
+
+# normalize
+seurat_obj <- NormalizeData(seurat_obj)
+
+# set HVGs:
+hvgs <- rownames(subset(gene_meta, highly_variable == 'True'))
+VariableFeatures(seurat_obj) <- hvgs
+
+# save data:
+saveRDS(seurat_obj, file=paste0(data_dir, 'harmony_annotated_integration.rds'))
+
+```

@@ -1,0 +1,310 @@
+
+
+In this notebook we take .bam files from cell ranger, and the fully processed
+Seurat object, to make a bigwig track for each cell group that we can vive
+on the UCSC genome browser.
+
+# 1: Load Data
+
+```{r eval=FALSE}
+# conda activate voyager
+
+library(Seurat)
+library(tidyverse)
+
+# load seurat obj:
+seurat_obj <- readRDS(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/data/harmony_annotated_integration.rds')
+
+load('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/data/color_scheme.rda')
+
+setwd("/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/trackhubs")
+
+```
+
+# Step 1: Get Barcode lists for each cell type in each sample
+For each sample, make a .tsv file that tells sinto how to split up the .bams
+
+```{r eval=FALSE}
+
+# IMPORTANT:
+# cellranger aggr doesn't make a bam file, so we have to use the ones from celranger count.
+# This means that the barcode suffix on each reads for each file have -1 at the end for all
+# of the files, regardless what it says in the Seurat object.
+
+################################################################################
+# split by celltype
+################################################################################
+
+dir.create('data/barcodes/')
+
+# get a list of the samples
+samples <- unique(seurat_obj$Sample) %>% as.character
+
+# loop over each sample
+for(sample in samples){
+
+  # print cell barcodes for one whole Sample:
+  barcodes <- seurat_obj@meta.data %>%
+    subset(Sample == sample)
+
+  # add cell type column
+  out_df <- data.frame(
+    'barcode'=paste0(do.call(rbind, strsplit(rownames(barcodes), '-'))[,1], '-1'),
+    'file' = gsub(' ', '_', barcodes$cell_type)
+  )
+
+  if(grepl('Sample', sample)){
+    name <- gsub("Sample", "Wood_Lab", sample)
+    name <- gsub('-', '_', name)
+  } else{
+    name <- gsub("Group3-", '', sample)
+  }
+ 
+  print(name)
+
+  # write
+  write.table(out_df, file=paste0('data/barcodes/', name, '_celltype_barcodes.tsv'), sep='\t', col.names=FALSE, row.names=FALSE, quote=FALSE)
+
+}
+
+
+################################################################################
+# split by cluster
+################################################################################
+
+dir.create('data/barcodes/')
+
+samples <- unique(seurat_obj$Sample) %>% as.character
+
+# loop over each sample
+for(sample in samples){
+
+  # print cell barcodes for one whole Sample:
+  barcodes <- seurat_obj@meta.data %>%
+    subset(Sample == sample)
+
+  # add cell type column
+  out_df <- data.frame(
+    'barcode'=paste0(do.call(rbind, strsplit(rownames(barcodes), '-'))[,1], '-1'),
+    'file' = gsub(' ', '_', barcodes$cell_identity)
+  )
+
+ 
+  if(grepl('Sample', sample)){
+    name <- gsub("Sample", "Wood_Lab", sample)
+    name <- gsub('-', '_', name)
+  } else{
+    name <- gsub("Group3-", '', sample)
+  }
+
+  #print(name)
+
+  # write
+  write.table(out_df, file=paste0('data/barcodes/', name, '_cluster_barcodes.tsv'), sep='\t', col.names=FALSE, row.names=FALSE, quote=FALSE)
+
+}
+
+
+```
+
+# Step 2: Run `sinto_split-bams.sub` script
+
+```{r eval=FALSE}
+
+cd ~/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/trackhubs/run_sinto
+
+# run the script!
+sbatch ../bin/sinto_split-bams.sub
+
+```
+
+
+## Step 3: write list of files to combined using samtools
+
+```{r eval=FALSE}
+
+################################################################################
+# cell types
+################################################################################
+
+bam_dir <- '/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/trackhubs/data/bams/'
+
+groups <- seurat_obj$cell_type  %>% as.character %>% unique
+groups <- gsub(' ', '_', groups)
+
+conditions <- unique(as.character(seurat_obj$Group))
+
+for(condition in conditions){
+
+  samples <- seurat_obj@meta.data %>% subset(Group == condition) %>% .$Sample %>% unique %>% as.character
+  samples <- gsub("Sample", "Wood_Lab", samples)
+  samples <- gsub("Group3-", "", samples)
+  samples <- gsub('-', '_', samples)
+
+  for(group in groups){
+    print(group)
+    bam_files <- paste0(bam_dir, samples, '_celltype/', group, '.bam')
+    bam_files <- bam_files[file.exists(bam_files)]
+    write.table(bam_files, file=paste0('data/bam_merge_lists/', group, '_', condition,'.tsv'), sep='\t', col.names=FALSE, row.names=FALSE, quote=FALSE)
+  }
+
+}
+
+################################################################################
+# clusters
+################################################################################
+
+bam_dir <- '/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/trackhubs/data/bams/'
+
+groups <- seurat_obj$cell_identity  %>% as.character %>% unique
+groups <- gsub(' ', '_', groups)
+
+conditions <- unique(as.character(seurat_obj$Group))
+
+for(condition in conditions){
+
+  samples <- seurat_obj@meta.data %>% subset(Group == condition) %>% .$Sample %>% unique %>% as.character
+  samples <- gsub("Sample", "Wood_Lab", samples)
+  samples <- gsub("Group3-", "", samples)
+  samples <- gsub('-', '_', samples)
+
+  for(group in groups){
+    print(group)
+    bam_files <- paste0(bam_dir, samples, '_cluster/', group, '.bam')
+    bam_files <- bam_files[file.exists(bam_files)]
+    write.table(bam_files, file=paste0('data/bam_merge_lists/', group, '_', condition,'.tsv'), sep='\t', col.names=FALSE, row.names=FALSE, quote=FALSE)
+  }
+
+}
+
+
+```
+
+## Step 4: Merge bam files based on lists we made in step 3:
+
+```{r eval=FALSE}
+
+cd ~/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/trackhubs/run
+sbatch ../bin/merge_bams.sub
+
+```
+
+## Step 5: Convert Merged .bams to bigwig format:
+
+```{bash eval=FALSE}
+
+cd ~/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/trackhubs/run_bam_to_bigwig
+sbatch ../bin/bam_to_bigwig.sub
+
+
+# re-name .bw to .bigWig
+cd ~/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/trackhubs/data/bigwigs/
+
+for file in ./*.bw
+do
+  name=$(basename $file .bw)
+  mv $file $name.bigWig
+done
+
+
+```
+
+
+
+
+## Step 6: Make necessary files for UCSC browser:
+
+* genomes.txt file
+* trackDb.txt file
+* hub.txt file
+
+Format of each entry:
+
+track ODC_i_AD
+bigDataUrl ODC_i_AD.bigWig
+shortLabel ODC_i_AD
+longLabel ODC_i_AD
+type bigWig
+visibility full
+color 255,171,255
+autoScale on
+
+```{r eval=FALSE}
+
+colors <- c(celltype_colors, cell_group_colors)
+
+bigwig_dir = "/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/trackhubs/data/bigwigs/"
+bigwigs <- dir(bigwig_dir)
+
+scale_factor <- 1.6
+
+outfile <- "/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/trackhubs/data/trackDb.txt"
+
+for(bw in bigwigs){
+
+  # get name
+  cur_name <- strsplit(bw, '[.]')[[1]][1]
+  cur_anno <- strsplit(cur_name, '[_]')[[1]][1]
+
+  # get color
+  cur_color <- colors[strsplit(bw, '[_]')[[1]][1]]
+  cur_rgb <- grDevices::col2rgb(cur_color) %>% as.numeric %>% paste0(collapse=",")
+
+  # get group
+  cur_group <- strsplit(bw, '[_]')[[1]][2]
+  cur_group <- strsplit(cur_group, '[.]')[[1]][1]
+
+  # how many cells in this group?
+  if(grepl("Neuron", cur_name)){
+    cur_nCells <- subset(seurat_obj@meta.data, cell_type == cur_anno & Group == cur_group) %>% nrow
+  } else{
+    cur_nCells <- subset(seurat_obj@meta.data, cell_identity == cur_anno & Group == cur_group) %>% nrow
+  }
+
+  # scale number of cells for visualiztion
+  cur_nCells <- round(cur_nCells * scale_factor)
+  cur_view <- paste0("0:", cur_nCells)
+  print(cur_view)
+
+  # write all info
+  lines <- list(
+    paste("track", cur_name),
+    paste("bigDataUrl", bw),
+    paste("shortLabel", cur_name),
+    paste('longLabel', cur_name),
+    paste('type bigWig'),
+    paste('visibility full'),
+    paste('color', cur_rgb),
+    paste('autoScale on'),
+  #  paste('viewLimits', cur_view),
+    paste("")
+  )
+
+  for(l in lines){
+    cat(l, file = outfile, sep="\n", append=TRUE)
+  }
+
+}
+
+
+
+
+
+```
+
+## Step 7: Moving stuff to the right spot
+
+* Move all bigwigs to artemis
+* put them in a web-facing folder such as
+
+/var/www/html/Nurr2c_trackhubs/
+
+* point the UCSC browser to this folder and voila!
+
+Put them here for this paper:
+https://swaruplab.bio.uci.edu/Nurr2c_trackhubs/
+
+
+You have to go to the UCSC Genome browser --> My Data tab, then Track Hubs, then Connected Hubs, then you need to paste the URL for the Nurr2c.hub.txt file into the URL thingy.
+
+https://genome.ucsc.edu/cgi-bin/hgHubConnect
