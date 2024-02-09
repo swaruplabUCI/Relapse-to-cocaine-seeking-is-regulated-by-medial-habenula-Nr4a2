@@ -1,0 +1,45 @@
+#!/bin/bash
+#SBATCH --job-name=TFNet
+#SBATCH -p standard
+#SBATCH -A vswarup_lab
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --error=slurm-%J.err
+#SBATCH --mem 64G
+#SBATCH --array=1-12
+#SBATCH --time=8:00:00
+
+source ~/.bashrc
+conda activate voyager
+
+# seurat object path:
+seurat="/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/tf_net/data/neurons_TFNet_seurat.rds"
+outdir="/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/tf_net/data/"
+
+wgcna_name="MHb_metacell"
+groupby="celltype_condition"
+name="TFnet"
+objective="reg:squarederror"
+maxdepth=1
+eta=0.1
+nthread=16
+alpha=0.1
+nestimators=50
+nfold=5
+
+# launch R script:
+Rscript --vanilla /dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/bin/parallel_TFnets.R \
+  --seurat $seurat \
+  --wgcnaname $wgcna_name \
+  --outdir $outdir \
+  --name $name \
+  --index $SLURM_ARRAY_TASK_ID \
+  --groupby $groupby \
+  --maxdepth $maxdepth \
+  --objective $objective \
+  --eta $eta \
+  --nthread $nthread \
+  --alpha $alpha \
+  --nestimators $nestimators \
+  --nfold $nfold

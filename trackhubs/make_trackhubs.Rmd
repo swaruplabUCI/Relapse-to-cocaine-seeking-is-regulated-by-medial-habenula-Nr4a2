@@ -1,7 +1,7 @@
 
 
 In this notebook we take .bam files from cell ranger, and the fully processed
-Seurat object, to make a bigwig track for each cell group that we can vive
+Seurat object, to make a bigwig track for each cell group that we can view
 on the UCSC genome browser.
 
 # 1: Load Data
@@ -25,11 +25,6 @@ setwd("/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/
 For each sample, make a .tsv file that tells sinto how to split up the .bams
 
 ```{r eval=FALSE}
-
-# IMPORTANT:
-# cellranger aggr doesn't make a bam file, so we have to use the ones from celranger count.
-# This means that the barcode suffix on each reads for each file have -1 at the end for all
-# of the files, regardless what it says in the Seurat object.
 
 ################################################################################
 # split by celltype
@@ -66,7 +61,6 @@ for(sample in samples){
   write.table(out_df, file=paste0('data/barcodes/', name, '_celltype_barcodes.tsv'), sep='\t', col.names=FALSE, row.names=FALSE, quote=FALSE)
 
 }
-
 
 ################################################################################
 # split by cluster
@@ -118,8 +112,7 @@ sbatch ../bin/sinto_split-bams.sub
 
 ```
 
-
-## Step 3: write list of files to combined using samtools
+## Step 3: write list of files to combine using samtools
 
 ```{r eval=FALSE}
 
@@ -209,9 +202,6 @@ done
 
 ```
 
-
-
-
 ## Step 6: Make necessary files for UCSC browser:
 
 * genomes.txt file
@@ -220,10 +210,10 @@ done
 
 Format of each entry:
 
-track ODC_i_AD
-bigDataUrl ODC_i_AD.bigWig
-shortLabel ODC_i_AD
-longLabel ODC_i_AD
+track ODC_1_NURR2C
+bigDataUrl ODC_1_NURR2C.bigWig
+shortLabel ODC_1_NURR2C
+longLabel OODC_1_NURR2C
 type bigWig
 visibility full
 color 255,171,255
@@ -286,10 +276,6 @@ for(bw in bigwigs){
 
 }
 
-
-
-
-
 ```
 
 ## Step 7: Moving stuff to the right spot
@@ -298,6 +284,8 @@ for(bw in bigwigs){
 * put them in a web-facing folder such as
 
 /var/www/html/Nurr2c_trackhubs/
+
+on the Swarup lab server.
 
 * point the UCSC browser to this folder and voila!
 

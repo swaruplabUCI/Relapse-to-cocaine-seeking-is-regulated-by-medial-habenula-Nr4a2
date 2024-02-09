@@ -1,0 +1,757 @@
+
+Clustering plots and Quality Control plots for the snRNA-seq dataset
+and some other misc. plots.
+
+```{r eval=FALSE}
+
+# conda activate voyager
+library(Seurat)
+library(tidyverse)
+library(RColorBrewer)
+library(viridis)
+library(cowplot)
+library(ggrepel)
+library(ggpubr)
+library(ggrastr)
+library(patchwork)
+library(MetBrewer)
+theme_set(theme_cowplot())
+
+source('/dfs7/swaruplab/smorabit/analysis/scWGCNA/bin/spatial_functions.R')
+
+# set random seed for reproducibility
+set.seed(12345)
+
+setwd('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/')
+fig_dir <- 'figures/'
+data_dir <- 'data/'
+
+# load seurat object
+seurat_obj <- readRDS(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/data/harmony_annotated_integration.rds')
+
+# re-load color scheme:
+load('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/data/color_scheme.rda')
+
+# make color scheme with metbrewer:
+cluster_colors = paste0(met.brewer("Renoir", length(levels(seurat_obj$annotation))))
+names(cluster_colors) <- levels(seurat_obj$annotation)
+
+color_df <- data.frame(
+  group = names(cluster_colors),
+  colour = as.character(cluster_colors)
+)
+
+# condition color scheme:
+group_cp <- c('darkgoldenrod3', 'hotpink3', "#14703F", "#643D78")
+names(group_cp) <- levels(seurat_obj$Group)
+group_colors <- group_cp
+
+# color scheme:
+cur_colors <- color_df$colour 
+names(cur_colors) <- color_df$group
+groups_in <- levels(seurat_obj$cell_identity);
+other_groups <- groups_in[! groups_in %in% levels(seurat_obj$annotation)]
+groups_in <- groups_in[groups_in %in% levels(seurat_obj$annotation)]
+cur_colors <- cur_colors[groups_in]
+other_colors <- c(
+    'ODC' = color_df[color_df$group == 'ODC1','colour'],
+    'ASC' = color_df[color_df$group == 'ASC1','colour'],
+    'VASC' = color_df[color_df$group == 'FBR','colour']
+)
+cur_colors <- c(cur_colors,other_colors)
+cell_group_colors <- cur_colors[levels(seurat_obj$cell_identity)]
+
+cell_id_color_df <- data.frame(
+    colour = as.character(cell_group_colors),
+    group = factor(
+        names(cell_group_colors),
+        levels = names(cell_group_colors)
+    )
+)
+
+# sample color scheme
+sample_colors <- c(
+    brewer.pal(8, 'Purples')[2:7],
+    brewer.pal(7, 'Greens')[2:6],
+    brewer.pal(9, 'Blues')[2:9]
+)
+names(sample_colors) <- levels(seurat_obj$Sample)
+
+# sample color scheme
+batch_colors <- brewer.pal(5, 'Greys')[2:4]
+names(batch_colors) <- levels(seurat_obj$Assignment)
+
+#save the color schemes:
+save(celltype_colors, cluster_colors, cell_group_colors, group_colors, sample_colors, batch_colors, file=paste0(data_dir,'color_scheme.rda'))
+
+
+```
+
+UMAP plots colored by cluster & cell type 
+
+Figure 2A
+
+```{r eval=FALSE}
+
+
+p <- PlotEmbedding(
+  seurat_obj,
+  group.by = 'annotation',
+  label=FALSE,
+  raster=TRUE,
+  raster_dpi = 800,
+  raster_scale=0.25,
+  plot_theme = hdWGCNA::umap_theme(),
+  color_df = color_df
+) + ggtitle('')
+
+pdf(paste0(fig_dir, 'habenula_umap.pdf'), width=8, height=7)
+p
+dev.off()
+
+p <- PlotEmbedding(
+  seurat_obj,
+  group.by = 'annotation',
+  label=TRUE,
+  raster=TRUE,
+  raster_dpi = 800,
+  raster_scale=0.25,
+  plot_theme = hdWGCNA::umap_theme(),
+  color_df = color_df,
+) + ggtitle('')
+
+pdf(paste0(fig_dir, 'habenula_umap_labeled.pdf'), width=8, height=7)
+p
+dev.off()
+
+
+```
+
+UMAP Featureplots colored by Nr4a2 expression split by condition 
+
+Figure 2C
+
+```{r eval=FALSE}
+
+#############################################################
+# Feature plot for Nr4a2 expression split by condition
+#############################################################
+
+p1 <- FeatureEmbedding(
+  seurat_obj %>% subset(Group == 'Nurr2c'),
+  'Nr4a2',
+  same_range=FALSE,
+  plot_max=4,
+  plot_min=1,
+  dpi=500,
+  point_size=0.25,
+  dpi_scale=0.5,
+  order_points='shuffle'
+)
+
+p2 <- FeatureEmbedding(
+  seurat_obj %>% subset(Group == 'GFP'),
+  'Nr4a2',
+  same_range=FALSE,
+  plot_max=4,
+  plot_min=1,
+  dpi=500,
+  point_size=0.25,
+  dpi_scale=0.5,
+  order_points='shuffle'
+)
+
+p3 <- FeatureEmbedding(
+  seurat_obj %>% subset(Group == 'NN'),
+  'Nr4a2',
+  same_range=FALSE,
+  plot_max=4,
+  plot_min=1,
+  dpi=500,
+  point_size=0.25,
+  dpi_scale=0.5,
+  order_points='shuffle'
+)
+
+p4 <- FeatureEmbedding(
+  seurat_obj %>% subset(Group == 'NGFP'),
+  'Nr4a2',
+  same_range=FALSE,
+  plot_max=4,
+  plot_min=1,
+  dpi=500,
+  point_size=0.25,
+  dpi_scale=0.5,
+  order_points='shuffle'
+)
+
+patch <- ((p1 / p2) | (p3 / p4)) + plot_layout(guides='collect')
+
+
+pdf(paste0(fig_dir, 'Nr4a2_featureplot.pdf'), width=9, height=8)
+patch
+dev.off()
+
+```
+
+
+plot neuron umap 
+
+Figure S2A
+
+```{r eval=FALSE}
+
+
+# subset by neuronal cells only:
+seurat_neuron <- subset(seurat_obj, cell_type %in% c('MHb-Neuron', 'LHb-Neuron', 'PHb-Neuron') & Group %in% c('Nurr2c', 'GFP'))
+
+# get the umap from cell_meta:
+umap <- seurat_neuron@meta.data[,c('neuron_UMAP_1', 'neuron_UMAP_2')]
+rownames(umap) <- rownames(seurat_neuron@meta.data)
+
+# set UMAP
+seurat_neuron@reductions$neuron_umap <- Seurat::CreateDimReducObject(
+  embeddings = as.matrix(umap),
+  key="neuronUMAP",
+  assay="RNA"
+)
+
+
+source('/dfs7/swaruplab/smorabit/analysis/scWGCNA/bin/spatial_functions.R')
+
+color_df <- data.frame(
+  colour = as.character(cluster_colors),
+  group = names(cluster_colors)
+)
+
+seurat_neuron$annotation <- droplevels(seurat_neuron$annotation)
+p<- PlotEmbedding(
+    seurat_neuron,
+    group.by = 'annotation',
+    raster_dpi = 400,
+    raster_scale=0.5, point_size=0.5,
+    label=TRUE,
+    plot_theme =  NoLegend() + hdWGCNA::umap_theme(),
+    reduction = 'neuron_umap',
+    color_df = color_df
+)
+
+
+pdf(paste0(fig_dir, 'neuronumap.pdf'), height=6, width=6)
+p
+dev.off()
+
+```
+
+Plot marker genes 
+
+Figure S2B
+
+```{r eval=FALSE}
+
+features=c(
+  'Tac2', 'Chat', 'Syt9', 'Kcnip1',  # Mhb
+  'Gap43', 'Chrm2', 'Chrm3', 'Hrt2c', 'Fam135b',  # LHb,
+  'Rbfox1', 'Cit', "Synpo2", "Grm1",  # Phb
+  'Pdgfra', 'Sox2ot', 'Plp1', 'Mog', 'Csf1r', 'Cx3cr1', 'Slc4a4', 'Slc39a12', 'Foxj1', 'Pdgfrb', 'Vtn', 'Flt1', 'Mecom' #non-neuronal
+)
+
+
+Idents(seurat_obj) <- forcats::fct_rev(seurat_obj$annotation)
+p <- DotPlot(seurat_obj, features=features, dot.min=0.10 ) +
+  RotatedAxis() +
+    scale_color_gradientn(
+    colors=rev(inferno(256)),
+    guide = guide_colorbar(barwidth=0.5, barheight=20, ticks=FALSE, label=FALSE)
+) +
+  ylab('') + xlab('') +
+  theme(
+    panel.border = element_rect(color = 'black', fill=NA, size=1),
+    axis.line.y = element_blank(),
+    axis.line.x = element_blank()
+  )
+
+pdf(paste0(fig_dir, 'markers_selected_dotplot.pdf'), width=8.25, height=6.25, useDingbats=FALSE)
+p
+dev.off()
+
+```
+
+
+
+Violin plot showing expression of Chat and Nr4a1,2,3 
+
+Figure 2B
+
+```{r eval=FALSE}
+
+library(ggpubr)
+
+cur_genes <- c('Nr4a1', 'Nr4a2', 'Nr4a3', 'Chat')
+
+seurat_obj$plot_groups <- ifelse(
+  seurat_obj$cell_type == 'PHb-Neuron', 'PHb-Neuron',
+  as.character(seurat_obj$cell_identity)
+)
+seurat_obj$plot_groups <- factor(
+  as.character(seurat_obj$plot_groups),
+  levels = c(
+    'MHb-1', 'MHb-2', 'MHb-3', 'MHb-4', 'MHb-5',
+    'LHb-1', 'LHb-2', 'LHb-3', 'LHb-4', 'LHb-5', 'LHb-6',
+    'PHb-Neuron', 'ASC', 'OPC', 'ODC', 'MG', 'EPD', 'VASC'
+))
+
+phb_color <- subset(cell_id_color_df, group == 'PHb-1') %>% .$colour
+cur_color_df <- cell_id_color_df[!grepl('PHb', cell_id_color_df$group),]
+cur_color_df <- rbind(cur_color_df, data.frame(colour = phb_color, group = 'PHb-Neuron'))
+rownames(cur_color_df) <- cur_color_df$group
+cur_color_df <- cur_color_df[levels(seurat_obj$plot_groups),]
+cur_color_df$group <- factor(as.character(cur_color_df$group), levels=levels(seurat_obj$plot_groups))
+
+p <- custom_vln(
+    seurat_obj,
+    features = cur_genes,
+    group.by = 'plot_groups',
+    split.by = 'Group',
+    group_color_df =cur_color_df,
+    add_boxplot=FALSE,
+    split_colors=group_cp,
+    add_colorbar=TRUE,
+    plot_ymin = 0,
+    plot_ymax=6,
+    comparisons=list(c('Nurr2c', 'GFP'), c('NN', 'NGFP'))
+  )
+
+pdf(paste0(fig_dir, 'Nr4a2_vln_clusters.pdf'), width=7.5, height=4.5)
+p
+dev.off()
+
+```
+
+Cluster proportion bar plots
+
+Figure S1 
+
+```{r eval=FALSE}
+
+################################################################################
+# snRNA-seq Proportion of Condition
+################################################################################
+
+seurat_meta <- seurat_obj@meta.data
+batches <- seurat_meta$Sample %>% unique %>% as.character
+cur_clusters  <- seurat_meta$cell_identity %>% unique %>% as.character
+
+scale_vec <- table(seurat_meta$Sample)
+
+proportion_df <- data.frame()
+for(i in 1:length(cur_clusters)){
+  cluster_meta <- subset(seurat_meta, cell_identity == cur_clusters[i])
+  cur_df <- as.data.frame(table(cluster_meta$Sample)) %>% dplyr::rename(Count = Freq)
+
+  # compute the non-normalized % of cells in each group
+  cur_df$Freq <- cur_df$Count / sum(cur_df$Count)
+
+  # scale frequency to the total number of clusters in each sample
+  cur_df$Scaled <- cur_df$Count / scale_vec
+  cur_df$Scaled <- cur_df$Scaled / sum(cur_df$Scaled)
+
+  # add to ongoing proportion df
+  cur_df$cluster <- cur_clusters[i]
+  proportion_df <- rbind(proportion_df, cur_df)
+}
+
+proportion_df <- dplyr::rename(proportion_df, Sample = Var1)
+proportion_df$cluster <- factor(proportion_df$cluster, levels=levels(seurat_meta$cell_identity))
+
+p <- ggplot(proportion_df, aes(y=Scaled, x=cluster, fill=Sample)) +
+  geom_bar(stat='identity') +
+ # geom_hline(yintercept = 0.5, linetype='dashed') +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values=sample_colors) +
+  theme(
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    axis.text.x = element_text(angle=45, hjust=1),
+    axis.title.x = element_blank(),
+    legend.title = element_blank(),
+    axis.line.y = element_line(colour = "black"),
+    axis.line.x = element_blank()
+  )
+
+pdf(paste0(fig_dir, 'cluster_proportion_sample_scaled.pdf'), height=4, width=10)
+print(p)
+dev.off()
+
+
+################################################################################
+# snRNA-seq Proportion of Batch
+################################################################################
+
+seurat_meta <- seurat_obj@meta.data
+batches <- seurat_meta$Assignment %>% unique %>% as.character
+cur_clusters  <- seurat_meta$cell_identity %>% unique %>% as.character
+
+scale_vec <- table(seurat_meta$Assignment)
+
+proportion_df <- data.frame()
+for(i in 1:length(cur_clusters)){
+  cluster_meta <- subset(seurat_meta, cell_identity == cur_clusters[i])
+  cur_df <- as.data.frame(table(cluster_meta$Assignment)) %>% dplyr::rename(Count = Freq)
+
+  # compute the non-normalized % of cells in each group
+  cur_df$Freq <- cur_df$Count / sum(cur_df$Count)
+
+  # scale frequency to the total number of clusters in each sample
+  cur_df$Scaled <- cur_df$Count / scale_vec
+  cur_df$Scaled <- cur_df$Scaled / sum(cur_df$Scaled)
+
+  # add to ongoing proportion df
+  cur_df$cluster <- cur_clusters[i]
+  proportion_df <- rbind(proportion_df, cur_df)
+}
+
+proportion_df <- dplyr::rename(proportion_df, Batch = Var1)
+proportion_df$cluster <- factor(proportion_df$cluster, levels=levels(seurat_meta$cell_identity))
+
+pdf(paste0(fig_dir, 'cluster_proportion_batch_scaled.pdf'), height=4, width=10)
+p <- ggplot(proportion_df, aes(y=Scaled, x=cluster, fill=Batch)) +
+  geom_bar(stat='identity') +
+ #geom_hline(yintercept = 0.5, linetype='dashed') +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values=batch_colors) +
+  theme(
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    axis.text.x = element_text(angle=45, hjust=1),
+    axis.title.x = element_blank(),
+    legend.title = element_blank(),
+    axis.line.y = element_line(colour = "black"),
+    axis.line.x = element_blank()
+  )
+print(p)
+dev.off()
+
+################################################################################
+# snRNA-seq Proportion of Condition
+################################################################################
+
+seurat_meta <- seurat_obj@meta.data
+batches <- seurat_meta$Group %>% unique %>% as.character
+cur_clusters  <- seurat_meta$cell_identity %>% unique %>% as.character
+
+scale_vec <- table(seurat_meta$Group)
+
+proportion_df <- data.frame()
+for(i in 1:length(cur_clusters)){
+  cluster_meta <- subset(seurat_meta, cell_identity == cur_clusters[i])
+  cur_df <- as.data.frame(table(cluster_meta$Group)) %>% dplyr::rename(Count = Freq)
+
+  # compute the non-normalized % of cells in each group
+  cur_df$Freq <- cur_df$Count / sum(cur_df$Count)
+
+  # scale frequency to the total number of clusters in each sample
+  cur_df$Scaled <- cur_df$Count / scale_vec
+  cur_df$Scaled <- cur_df$Scaled / sum(cur_df$Scaled)
+
+  # add to ongoing proportion df
+  cur_df$cluster <- cur_clusters[i]
+  proportion_df <- rbind(proportion_df, cur_df)
+}
+
+proportion_df <- dplyr::rename(proportion_df, Group = Var1)
+proportion_df$cluster <- factor(proportion_df$cluster, levels=levels(seurat_meta$cell_identity))
+
+p <- ggplot(proportion_df, aes(y=Scaled, x=cluster, fill=Group)) +
+  geom_bar(stat='identity') +
+  #geom_hline(yintercept = 0.5, linetype='dashed') +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values=group_cp) +
+  theme(
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    axis.text.x = element_text(angle=45, hjust=1),
+    axis.title.x = element_blank(),
+    legend.title = element_blank(),
+    axis.line.y = element_line(colour = "black"),
+    axis.line.x = element_blank()
+  )
+
+pdf(paste0(fig_dir, 'cluster_proportion_condition_scaled.pdf'), height=4, width=10)
+print(p)
+dev.off()
+
+
+##############################################################################
+# proportion of cluster in each sample
+##############################################################################
+
+seurat_meta <- seurat_obj@meta.data
+batches <- seurat_meta$cell_identity %>% unique %>% as.character
+cur_clusters  <- seurat_meta$Sample %>% unique %>% as.character
+
+proportion_df <- data.frame()
+for(i in 1:length(cur_clusters)){
+  cluster_meta <- subset(seurat_meta, Sample == cur_clusters[i])
+  cur_df <- as.data.frame(table(cluster_meta$cell_identity)) %>% dplyr::rename(Count = Freq)
+
+  # compute the non-normalized % of cells in each group
+  cur_df$Freq <- cur_df$Count / sum(cur_df$Count)
+
+  # add to ongoing proportion df
+  cur_df$cluster <- cur_clusters[i]
+  proportion_df <- rbind(proportion_df, cur_df)
+}
+
+proportion_df <- dplyr::rename(proportion_df, Group = Var1)
+proportion_df$cluster <- factor(proportion_df$cluster, levels=levels(seurat_meta$Sample))
+
+p <- ggplot(proportion_df, aes(y=Freq, x=cluster, fill=Group)) +
+  geom_bar(stat='identity') +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_fill_manual(values=cell_group_colors) +
+  theme(
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    axis.text.x = element_text(angle=45, hjust=1),
+    axis.title.x = element_blank(),
+    legend.title = element_blank(),
+    axis.line.y = element_line(colour = "black"),
+    axis.line.x = element_blank()
+  )
+
+pdf(paste0(fig_dir, 'sample_proportion_clusters.pdf'), height=4, width=10)
+print(p)
+dev.off()
+
+
+```
+
+
+QC Violin plots
+
+Figure S1
+
+```{r eval=FALSE}
+
+################################################################################
+# Cluster level violin plots:
+################################################################################
+
+Idents(seurat_obj) <- seurat_obj$cell_identity
+p <- VlnPlot(seurat_obj, features = 'total_counts', pt.size=0) +
+  geom_boxplot(outlier.shape=NA, width=.25, fill='white') +
+  scale_fill_manual(values=cell_group_colors) +
+  scale_y_continuous(labels=scales::comma) +
+  ylab(expression(italic(N)[UMI])) +
+  xlab('') + NoLegend() + ggtitle('')
+
+pdf(paste0(fig_dir, 'vln_nUMI_clusters.pdf'), height=4, width=10)
+p
+dev.off()
+
+
+p <- VlnPlot(seurat_obj, features = 'pct_counts_mt', pt.size=0) +
+  geom_boxplot(outlier.shape=NA, width=.25, fill='white') +
+  scale_fill_manual(values=cell_group_colors) +
+  scale_y_continuous(labels=scales::comma) +
+  ylab("pct_counts_mt") +
+  xlab('') + NoLegend() + ggtitle('')
+
+pdf(paste0(fig_dir, 'vln_mito_clusters.pdf'), height=4, width=10)
+p
+dev.off()
+
+p <- VlnPlot(seurat_obj, features = 'n_genes_by_counts', pt.size=0) +
+  geom_boxplot(outlier.shape=NA, width=.25, fill='white') +
+  scale_fill_manual(values=cell_group_colors) +
+  scale_y_continuous(labels=scales::comma) +
+  ylab(expression(italic(N)[Genes])) +
+  xlab('') + NoLegend() + ggtitle('')
+
+pdf(paste0(fig_dir, 'vln_nGenes_clusters.pdf'), height=4, width=10)
+p
+dev.off()
+
+
+################################################################################
+# Sample level violin plots:
+################################################################################
+
+Idents(seurat_obj) <- seurat_obj$Sample
+p <- VlnPlot(seurat_obj, features = 'total_counts', pt.size=0) +
+  geom_boxplot(outlier.shape=NA, width=.25, fill='white') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_fill_manual(values=sample_colors) +
+  ylab(expression(italic(N)[UMI])) +
+  xlab('') + NoLegend() + ggtitle('')
+
+pdf(paste0(fig_dir, 'vln_nUMI_samples.pdf'), height=4, width=10)
+p
+dev.off()
+
+
+p <- VlnPlot(seurat_obj, features = 'pct_counts_mt', pt.size=0) +
+  geom_boxplot(outlier.shape=NA, width=.25, fill='white') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_fill_manual(values=sample_colors) +
+  ylab("pct_counts_mt") +
+  xlab('') + NoLegend() + ggtitle('')
+
+pdf(paste0(fig_dir, 'vln_mito_samples.pdf'), height=4, width=10)
+p
+dev.off()
+
+p <- VlnPlot(seurat_obj, features = 'n_genes_by_counts', pt.size=0) +
+  geom_boxplot(outlier.shape=NA, width=.25, fill='white') +
+  scale_y_continuous(labels=scales::comma) +
+  scale_fill_manual(values=sample_colors) +
+  ylab(expression(italic(N)[Genes])) +
+  xlab('') + NoLegend() + ggtitle('') 
+
+pdf(paste0(fig_dir, 'vln_nGenes_samples.pdf'), height=4, width=10)
+p
+dev.off()
+
+```
+
+
+Plot doublet score & ex-vivo activation score
+
+Figure S1
+
+```{r eval=FALSE}
+
+
+exam_genes <- read.csv('~/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/data/exAMgenes_Marsh2022.csv')
+
+genes_test <- exam_genes$ExAm_ALL
+genes_test <- genes_test[genes_test != '']
+genes_test <- genes_test[genes_test %in% rownames(seurat_obj)]
+
+# compute the Nr4a2 MHb score
+exam_score <-  Seurat::AddModuleScore(seurat_obj, features=list('exam' = genes_test))@meta.data
+exam_score <- exam_score[,ncol(exam_score)]
+
+# add score to seurat object
+seurat_obj$exam_score <- exam_score
+
+# compute the Nr4a2 MHb score
+
+exam_score <- UCell::AddModuleScore_UCell(seurat_obj, features=list('exam' = genes_test))@meta.data
+exam_score <- exam_score[,ncol(exam_score)]
+
+# add score to seurat object
+seurat_obj$exam_score_ucell <- exam_score
+
+p <- FeatureEmbedding(
+  seurat_obj,
+  features=c('exam_score_ucell'),
+  plot_max=1,
+  plot_min=0,
+  ncol=2,
+  dpi=500,
+  point_size=0.25,
+  dpi_scale=0.25,
+  order_points='shuffle'
+)
+
+pdf(paste0(fig_dir, 'umap_exam_score.pdf'), width=5, height=5)
+p
+dev.off()
+
+p <- FeatureEmbedding(
+  seurat_obj,
+  features=c('doublet_scores'),
+  plot_max=1,
+  plot_min=0.05,
+  ncol=2,
+  dpi=500,
+  point_size=0.25,
+  dpi_scale=0.25,
+  order_points='shuffle'
+)
+
+pdf(paste0(fig_dir, 'umap_doublet_score.pdf'), width=5, height=5)
+p
+dev.off()
+
+
+
+```
+
+MELD plot (Figure 5A)
+
+```{r eval=FALSE}
+
+# subset seurat obj to just Nurr2c & GFP 
+seurat_full <- seurat_obj
+seurat_obj <- subset(seurat_full, Group %in% c('Nurr2c', 'GFP'))
+
+# add MELD score to the seurat obj
+meld_scores <- read.csv(paste0('../data/MELD_Nurr2c_likelihood_behavior.csv'))
+seurat_obj@meta.data['Nurr2c_likelihood'] <- meld_scores$Nurr2c_likelihood
+
+################################################################################
+# MELD Score vlnplot sorted by median value
+################################################################################
+
+plot_df <- seurat_obj@meta.data %>% select(c(annotation, Nurr2c_likelihood, Group, cell_type))
+
+color2 <- 'darkgoldenrod3'; color1 <- 'hotpink3'
+
+# order groups by Neuronal vs non-neuronal, and by desceinding likelihood:
+neuron_order <- plot_df %>% subset(cell_type %in% c('MHb-Neuron', 'LHb-Neuron', 'PHb-Neuron')) %>%
+  mutate(annotation = droplevels(annotation)) %>%
+  mutate(annotation = forcats::fct_reorder(annotation, Nurr2c_likelihood, .desc=TRUE)) %>%
+  .$annotation %>% levels
+
+nonneuron_order <- plot_df %>% subset(!(cell_type %in% c('MHb-Neuron', 'LHb-Neuron', 'PHb-Neuron'))) %>%
+  mutate(annotation = droplevels(annotation)) %>%
+  mutate(annotation = forcats::fct_reorder(annotation, Nurr2c_likelihood, .desc=TRUE)) %>%
+  .$annotation %>% levels
+
+plot_df$annotation <- factor(as.character(plot_df$annotation), levels=c(neuron_order, nonneuron_order))
+
+p <- ggplot(plot_df, aes(x = annotation, y = Nurr2c_likelihood)) +
+  ggrastr::rasterise(
+    geom_jitter(
+      shape=16, position=position_jitter(0.2), aes(color=Nurr2c_likelihood), alpha=0.8), dpi=400, scale=0.3) +
+  scale_color_gradient2(low=color1, mid='lightgrey', high=color2, midpoint=0.5) +
+  geom_boxplot(outlier.colour="black", outlier.shape=NA, notch=TRUE, fill='grey', alpha=0.25) +
+  geom_hline(yintercept = 0.5, linetype='dashed', color='darkgrey') +
+  RotatedAxis() + xlab('') + ylab('MELD Nurr2c Likelihood') +
+  theme(
+    axis.line.x = element_blank(),
+    axis.line.y = element_blank(),
+    panel.border = element_rect(size=1, fill=NA, color='black'),
+) +scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
+
+
+
+pdf(paste0(fig_dir, 'Nurr2c_likelihood_boxplot.pdf'), width=8, height=2.5)
+p
+dev.off()
+
+
+p <- ggplot(plot_df, aes(y = fct_rev(annotation), x = 1 - Nurr2c_likelihood)) +
+  ggrastr::rasterise(
+    geom_jitter(
+      shape=16, aes(color=Nurr2c_likelihood), alpha=0.8, width=0, height=0.2), dpi=400, scale=0.3) +
+  scale_color_gradient2(low=color1, mid='lightgrey', high=color2, midpoint=0.5) +
+  geom_boxplot(outlier.colour="black", outlier.shape=NA, notch=TRUE, fill='grey', alpha=0.25) +
+  geom_vline(xintercept = 0.5, linetype='dashed', color='darkgrey') +
+  ylab('') + xlab('MELD Nurr2c Likelihood') +
+  RotatedAxis() +
+  theme(
+    axis.line.x = element_blank(),
+    axis.line.y = element_blank(),
+    panel.border = element_rect(size=1, fill=NA, color='black'),
+) +scale_x_continuous(breaks=c(0,0.25,0.5,0.75,1))
+
+
+pdf(paste0(fig_dir, 'Nurr2c_likelihood_boxplot_tall.pdf'), width=4, height=6)
+p
+dev.off()
+
+```

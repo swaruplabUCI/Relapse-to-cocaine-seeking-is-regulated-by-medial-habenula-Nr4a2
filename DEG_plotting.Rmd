@@ -16,17 +16,12 @@ theme_set(theme_cowplot())
 # set random seed for reproducibility
 set.seed(12345)
 
-
 setwd('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/')
 fig_dir <- 'figures/'
 data_dir <- 'data/'
 
 # load seurat object
 seurat_obj <- readRDS(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/data/harmony_annotated_integration.rds')
-
-# Old 
-# Nr4a2_targets <- read.csv(file="/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/analysis/test_harmony/data/Nr4a2_targets.csv", stringsAsFactors=FALSE) %>% .$x
-#Nr4a2_targets <- read.csv(file="/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/data/Nr4a2_targets.csv", stringsAsFactors=FALSE) %>% .$x
 
 # load the color scheme!!
 load('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/data/color_scheme.rda')
@@ -147,20 +142,58 @@ write.csv(
   quote=FALSE, row.names=FALSE
 )
 
-
-
 ```
 
-Marker gene heatmap 
+Write the significant DEGs for the Supplementary Tables
 
 ```{r eval=FALSE}
 
+# cluster DEGs
+degs_cl <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/cluster_Nurr2c_vs_GFP_DEGs.csv')
+degs_ct <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Nurr2c_vs_GFP_DEGs.csv')
+
+keep_groups <- setdiff(unique(degs_cl$group), unique(degs_ct$group))
+degs_cl <- subset(degs_cl, p_val_adj < 0.05 & group %in% keep_groups) %>% 
+  dplyr::select(-Nr4a2)
+degs_ct <- subset(degs_ct, p_val_adj < 0.05) %>% 
+    dplyr::select(-Nr4a2)
+degs <- rbind(degs_cl, degs_ct)
+
+write.csv(
+  degs,
+  file=paste0(data_dir, 'experienced_DEGs_signif.csv'),
+  quote=FALSE, row.names=FALSE
+)
+
+# celltype DEGs
+
+# Naive cluster DEGs
+degs_cl <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/cluster_Naive_Nurr2c_vs_GFP_DEGs.csv')
+degs_ct <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Naive_Nurr2c_vs_GFP_DEGs.csv')
+
+keep_groups <- setdiff(unique(degs_cl$group), unique(degs_ct$group))
+degs_cl <- subset(degs_cl, p_val_adj < 0.05 & group %in% keep_groups) %>% 
+  dplyr::select(-Nr4a2)
+degs_ct <- subset(degs_ct, p_val_adj < 0.05) %>% 
+    dplyr::select(-Nr4a2)
+degs <- rbind(degs_cl, degs_ct)
+
+write.csv(
+  degs,
+  file=paste0(data_dir, 'naive_DEGs_signif.csv'),
+  quote=FALSE, row.names=FALSE
+)
+
+```
+
+Plot the Marker gene heatmap (Figure 2B)
+
+```{r eval=FALSE}
 
 # read combined
 degs <- read.csv('/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/cluster_marker_DEGs.csv')
 group_levels <- levels(seurat_obj$cell_identity)
 degs$group <- factor(as.character(degs$group), levels=group_levels)
-
 
 n_degs <- 5
 plot_genes <- degs %>%
@@ -203,10 +236,13 @@ dev.off()
 
 ```
 
-
-Mhb marker gene analysis
+Neuronal marker gene analysis (Figure S2)
 
 ```{r eval=FALSE}
+
+#--------------------------------------------------------------------------------
+# MHb markers
+#--------------------------------------------------------------------------------
 
 seurat_mhb <- subset(seurat_obj, cell_type == 'MHb-Neuron')
 seurat_mhb$annotation <- droplevels(seurat_mhb$annotation)
@@ -223,11 +259,8 @@ markers <- FindAllMarkers(
 write.csv(markers, quote=FALSE, file=paste0(data_dir, 'mhb_markers.csv'))
 markers <- read.csv(file=paste0(data_dir, 'mhb_markers.csv'))
 
-
-# remove mt and rb genes:
-
+# exclude mitochondrial genes from the plot
 markers <- markers[!grepl("^mt-", markers$gene),]
-
 n_degs <- 15
 plot_genes <- markers %>%
   arrange(cluster) %>%
@@ -235,8 +268,6 @@ plot_genes <- markers %>%
   group_by(cluster) %>%
   top_n(n_degs, wt=avg_log2FC)  %>%
   .$gene
-
-
 
 # set random seed
 set.seed(42)
@@ -261,12 +292,9 @@ dev.off()
 
 subset(markers, cluster == 'MHb-5') %>% arrange(avg_log2FC)
 
-
-```
-
-Lhb markers
-
-```{r eval=FALSE}
+#--------------------------------------------------------------------------------
+# LHb markers
+#--------------------------------------------------------------------------------
 
 seurat_lhb <- subset(seurat_obj, cell_type == 'LHb-Neuron')
 seurat_lhb$annotation <- droplevels(seurat_lhb$annotation)
@@ -285,7 +313,6 @@ markers <- read.csv(file=paste0(data_dir, 'lhb_markers.csv'))
 
 
 markers <- markers[!grepl("^mt-", markers$gene),]
-
 n_degs <- 10
 plot_genes <- markers %>%
   arrange(cluster) %>%
@@ -293,8 +320,6 @@ plot_genes <- markers %>%
   group_by(cluster) %>%
   top_n(n_degs, wt=avg_log2FC)  %>%
   .$gene
-
-
 
 # set random seed
 set.seed(42)
@@ -319,12 +344,9 @@ dev.off()
 subset(markers, cluster == 'MHb-5') %>% arrange(avg_log2FC)
 
 
-```
-
-
-Phb markers
-
-```{r eval=FALSE}
+#--------------------------------------------------------------------------------
+# PHb markers
+#--------------------------------------------------------------------------------
 
 seurat_phb <- subset(seurat_obj, cell_type == 'PHb-Neuron')
 seurat_phb$annotation <- droplevels(seurat_phb$annotation)
@@ -373,15 +395,11 @@ pdf(paste0(fig_dir, 'phb_marker_gene_heatmap.pdf'), width=7, height=12, useDingb
 p
 dev.off()
 
-subset(markers, cluster == 'MHb-5') %>% arrange(avg_log2FC)
-
 
 ```
 
-
-
-
-Make a table of primary and secondary Nr4a2 target genes 
+Make a table of primary and secondary Nr4a2 target genes using the 
+TF network analysis.
 
 ```{r eval=FALSE}
 
@@ -459,7 +477,6 @@ for(cur_net_file in tf_nets){
   network_df <- rbind(network_df, cur_network)
 }
 
-
 # save this as a supp table!
 df <- network_df %>% subset(group != 'PHb-Neuron')
 df <- df %>%  dplyr::select(-c(Cover, Frequency, Cor, Score)) 
@@ -467,55 +484,16 @@ df <- df %>% dplyr::rename(regulatory_score=Gain)
 
 write.csv(df, file=paste0(data_dir, 'Nr4a2_regulons.csv'), quote=FALSE, row.names=FALSE)
 
-
-```
-
-save only significant DEGs for the supps 
-
-```{r eval=FALSE}
-
-
-# cluster DEGs
-degs_cl <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/cluster_Nurr2c_vs_GFP_DEGs.csv')
-degs_ct <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Nurr2c_vs_GFP_DEGs.csv')
-
-keep_groups <- setdiff(unique(degs_cl$group), unique(degs_ct$group))
-degs_cl <- subset(degs_cl, p_val_adj < 0.05 & group %in% keep_groups) %>% 
-  dplyr::select(-Nr4a2)
-degs_ct <- subset(degs_ct, p_val_adj < 0.05) %>% 
-    dplyr::select(-Nr4a2)
-degs <- rbind(degs_cl, degs_ct)
-
-write.csv(
-  degs,
-  file=paste0(data_dir, 'experienced_DEGs_signif.csv'),
-  quote=FALSE, row.names=FALSE
-)
-
-# celltype DEGs
-
-# Naive cluster DEGs
-degs_cl <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/cluster_Naive_Nurr2c_vs_GFP_DEGs.csv')
-degs_ct <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Naive_Nurr2c_vs_GFP_DEGs.csv')
-
-keep_groups <- setdiff(unique(degs_cl$group), unique(degs_ct$group))
-degs_cl <- subset(degs_cl, p_val_adj < 0.05 & group %in% keep_groups) %>% 
-  dplyr::select(-Nr4a2)
-degs_ct <- subset(degs_ct, p_val_adj < 0.05) %>% 
-    dplyr::select(-Nr4a2)
-degs <- rbind(degs_cl, degs_ct)
-
-write.csv(
-  degs,
-  file=paste0(data_dir, 'naive_DEGs_signif.csv'),
-  quote=FALSE, row.names=FALSE
-)
-
 ```
 
 Nurr2c vs GFP with updated Nr4a2 targets (Neurons only)
+Volcano plots in Figures 4 and 5
 
 ```{r eval=FALSE}
+
+#---------------------------------------------------------------------------#
+# First select one of the following groups of DEGs for plotting
+#---------------------------------------------------------------------------#
 
 # cluster DEGs
 degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/cluster_Nurr2c_vs_GFP_DEGs.csv')
@@ -703,8 +681,8 @@ dev.off()
 
 ```
 
-<!-- 
-Nurr2c vs GFP Volcano (old)
+Volcano plots for all cell types, not split by TF target type
+(Figure S6)
 
 ```{r eval=FALSE}
 
@@ -758,19 +736,12 @@ nlabel <- 5
 color2 <- "#643D78"; color1 <- "#14703F"
 
 
-# remove the mt genes
+# remove the mt genes from the plot
 degs <- degs[!grepl('mt-', degs$gene),]
 
 # lowest non-zero value
 lowest <- degs %>% subset(p_val_adj != 0) %>% top_n(-1, wt=p_val_adj) %>% .$p_val_adj
 degs$p_val_adj <- ifelse(degs$p_val_adj == 0, lowest, degs$p_val_adj)
-
-
-# if(Nr4a2){
-#   degs <- subset(degs, Nr4a2)
-# } else{
-#   degs <- subset(degs, !Nr4a2)
-# }
 
 # label the top and bottom significant genes by log fold change
 cur_degs <- Reduce(rbind, lapply(unique(degs$group), function(x){
@@ -852,111 +823,113 @@ pdf(out, width=18, height=6.5, useDingbats=FALSE)
 wrap_plots(plot_list, ncol=6)
 dev.off()
 
-``` -->
-
-
-
-Upset plot for Nurr2c vs GFP genes
-
-```{r eval=FALSE}
-library(UpSetR)
-
-
-# celltype DEGs
-degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Nurr2c_vs_GFP_DEGs.csv')
-degs <- subset(degs, group %in% seurat_obj$cell_type)
-degs$group <- factor(
-  degs$group,
-  levels = levels(seurat_obj$cell_type)
-)
-name <- 'Nurr2c'
-Nr4a2 <- FALSE
-nlabel <- 5
-color1 <- 'darkgoldenrod3'; color2 <- 'hotpink3'
-
-
-# Naive celltype DEGs
-degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Naive_Nurr2c_vs_GFP_DEGs.csv')
-degs <- subset(degs, group %in% seurat_obj$cell_type)
-degs$group <- factor(
-  degs$group,
-  levels = levels(seurat_obj$cell_type)
-)
-name <- 'Naive'
-Nr4a2 <- TRUE
-nlabel <- 5
-color2 <- "#643D78"; color1 <- "#14703F"
-
-
-
-
-# fold-change cutoff:
-fc_cutoff <- 0.25
-groups <- c( "LHb-Neuron", "MHb-Neuron", "PHb-Neuron")
-groups <- c( "LHb-Neuron", "MHb-Neuron")
-degs$gene <- factor(as.character(degs$gene), levels=unique(degs$gene))
-
-upset_list <- list()
-names <- c()
-for(cur_group in groups){
-  cur_df_up <- degs %>% subset(group == cur_group & p_val_adj < 0.05 & avg_log2FC > fc_cutoff)
-  cur_df_down <- degs %>% subset(group == cur_group & p_val_adj < 0.05 & avg_log2FC < -fc_cutoff)
-  upset_list[[paste0(cur_group, '_down')]] <- table(cur_df_down$gene)
-  upset_list[[paste0(cur_group, '_up')]] <- table(cur_df_up$gene)
-}
-
-tmp <- c(paste0(groups, '_up'), paste0(groups, '_down'))
-names <- tmp[order(tmp)]
-
-# combine into one df
-upset_df <- as.data.frame(Reduce(cbind, upset_list))
-colnames(upset_df) <- names
-
-# remove entries with all 0
-upset_df <- upset_df[rowSums(upset_df) > 0,]
-
-cur_colors <- celltype_colors[groups]
-names(cur_colors) <- paste0(names(cur_colors), '_up')
-#cur_colors_down <- unlist(lapply(celltype_colors[groups], scales::muted))
-cur_colors_down <- celltype_colors[groups]
-names(cur_colors_down) <- paste0(names(cur_colors_down), '_down')
-cur_colors <- c(cur_colors, cur_colors_down)
-cur_colors <- cur_colors[colnames(upset_df)]
-
-p <- UpSetR::upset(
-  upset_df,
-  sets=colnames(upset_df),
-  group.by='sets',
-  #cutoff=5,
-  sets.bar.color=cur_colors,
-)
-
-
-pdf(paste0(fig_dir, 'deg_upset_', name,'2.pdf'), width=5, height=4)
-p
-dev.off()
-
 ```
 
 
 
-Correlate the new and the old DEGs 
+RRHO plots to compare DEGs between MHb and LHb
+Figures 4C and 5D
 
 ```{r eval=FALSE}
 
-degs_old <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/DEGs/data/celltype_Nurr2c_vs_GFP.csv')
+
+library(RRHO)
+library(viridis)
+library(ggpubr)
+
+
+degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/DEGs/data/celltype_Nurr2c_vs_GFP.csv')
 degs$group <- factor(
   degs$group,
   levels = levels(seurat_obj$cell_type)
 )
 name <- 'celltype'
 
+
+cur_target_type <- 'primary'
+cur_target_type <- 'secondary'
+cur_target_type <- 'other'
+
+
+degs <- subset(degs, target_type == cur_target_type)
+
+
+# lowest non-zero value
+lowest <- degs %>% subset(p_val_adj != 0) %>% top_n(-1, wt=p_val_adj) %>% .$p_val_adj
+degs$p_val_adj <- ifelse(degs$p_val_adj == 0, lowest, degs$p_val_adj)
+
+groups <- c('MHb-Neuron','LHb-Neuron', 'PHb-Neuron')
+pairs <- combn(groups, 2)
+
+# plot settings
+rrho_plot_list <- list()
+cor_list <- c()
+NR4A2 <- TRUE
+#rrho_maxval <- 500
+rrho_maxval <- 350
+
+colfunc <- inferno
+
+for(i in 1:ncol(pairs)){
+
+  cur_pair <- pairs[,i]
+  name <- paste(cur_pair, collapse='_')
+  print(name)
+  cur_x <- cur_pair[1];  cur_y <- cur_pair[2]
+
+  cur_degs_x <- subset(degs, group == cur_x & Nr4a2 == NR4A2 )
+  cur_degs_y <- subset(degs, group == cur_y & Nr4a2 == NR4A2 )
+
+  # make sure they are in the same order:
+  rownames(cur_degs_x) <- cur_degs_x$gene
+  rownames(cur_degs_y) <- cur_degs_y$gene
+  cur_degs_y <- cur_degs_y[cur_degs_x$gene,]
+
+  # join the two dataframes
+  plot_df <- dplyr::inner_join(cur_degs_x, cur_degs_y, by = 'gene')
+
+  cur_cor <-  cor(x=as.numeric(plot_df$avg_log2FC.x), y=as.numeric(plot_df$avg_log2FC.y))
+cor_list <- c(cor_list, cur_cor)
+
+  # set up gene lists
+  gl1 <- plot_df[,c('gene', 'avg_log2FC.x')]
+  gl2 <- plot_df[,c('gene', 'avg_log2FC.y')]
+
+  # run rrho
+  test <- RRHO(gl1, gl2, alternative='enrichment', BY=TRUE)
+  overlap_df <- reshape2::melt(test$hypermat.by)
+  #subset(overlap_df, value != Inf) %>% .$value %>% max
+  overlap_df$value <- ifelse(overlap_df$value > rrho_maxval, rrho_maxval, overlap_df$value)
+
+  # plot rrho heatmap
+  p <- ggplot(overlap_df, aes(x=Var1, y=Var2, fill=value, color=value)) +
+    ggrastr::rasterise(geom_tile(), dpi=500) +
+    scale_fill_gradientn(colors=colfunc(256), limits=c(0, rrho_maxval)) +
+    scale_color_gradientn(colors=colfunc(256), limits=c(0, rrho_maxval)) +
+    theme(
+      plot.title=element_text(hjust=0.5, size=5, face='plain'),
+      axis.line=element_blank(),
+      axis.ticks=element_blank(),
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.title = element_blank(),
+      plot.margin=margin(0,0,0,0)
+    ) + coord_equal() + ggtitle(paste0(name, '\nR=', signif(as.numeric(cur_cor),3)))
+
+  rrho_plot_list[[name]] <- p
+
+}
+
+
+pdf(paste0(fig_dir, 'deg_rrho_combined_', cur_target_type, '.pdf'), width=3, height=7)
+wrap_plots(rrho_plot_list, ncol=1) + plot_layout(guides='collect')
+dev.off()
+
 ```
 
 
-
-
 Quantify overlap between the Naive & Behavior DEGs  
+Euler Diagrams in Figures 4 and 5
 
 ```{r eval=FALSE}
 
@@ -1003,17 +976,9 @@ Nr4a2 <- FALSE
 degs_naive <- degs
 
 
-
-
-
-# if(Nr4a2){
-#     degs_naive <- subset(degs_naive, Nr4a2)
-#     degs_nurr2c <- subset(degs_nurr2c, Nr4a2)
-# } else{
-#     degs_naive <- subset(degs_naive, !Nr4a2)
-#     degs_nurr2c <- subset(degs_nurr2c, !Nr4a2)
-# }
-
+#--------------------------------------------------------------
+# Compute gene overlaps
+#--------------------------------------------------------------
 
 groups <- levels(degs_nurr2c$group)
 
@@ -1062,32 +1027,6 @@ overlap_df$group <- factor(
 subset(overlap_df, group == 'LHb-Neuron')
 subset(overlap_df, group == 'MHb-Neuron')
 
-p <- overlap_df %>% 
-  ggplot(aes(x = group, y=direction, color=Jaccard, size=size_intersection)) + 
-  geom_point() + 
-  geom_text(label=overlap_df$size_intersection, size=5, color='black') + 
-  scale_color_gradient(high='seagreen', low='lightgrey') + 
-  scale_size_continuous(range = c(0.25, 12), guide='none') +
-  RotatedAxis() + xlab('') + ylab('') +
-  theme(
-    panel.border = element_rect(color='black', fill=NA, linewidth=1),
-    plot.title = element_text(hjust=0.5, size=12),
-    axis.line.x = element_blank(),
-    axis.line.y = element_blank()
-  ) + 
-  ggtitle(paste0('Overlap of Behavior & Naive DEGs (FC thresh: ', fc_cutoff, ')'))
-
-if(Nr4a2){
-  out <- paste0(fig_dir, 'DEG_overlap_', name, '_', gsub('[.]','',as.character(fc_cutoff)),'2_Nr4a2.pdf')
-} else{
-  out <- paste0(fig_dir, 'DEG_overlap_', name, '_', gsub('[.]','',as.character(fc_cutoff)),'2.pdf')
-}
-
-pdf(out, width=8, height=2.5)
-p
-dev.off()
-
-
 
 #####################################################################
 # Euler diagram to compare behavior & naive
@@ -1097,7 +1036,6 @@ subset(degs_nurr2c, group == 'MHb-Neuron' & avg_log2FC < -0.25 & p_val_adj < 0.0
 subset(degs_naive, group == 'MHb-Neuron' & avg_log2FC < -0.25 & p_val_adj < 0.05) %>% nrow
 
 library(eulerr)
-
 
 cur_celltype <- 'MHb-Neuron'
 cur_celltype <- 'LHb-Neuron'
@@ -1177,9 +1115,9 @@ dev.off()
 ```
 
 
-Correlation between Nurr2c & Naive
+Comparison of DEGs between Experienced & Naive Groups
 
-Define sets of primary & secondary nr4a2 targets
+(Figures 4E, 5H-J)
 
 ```{r eval=FALSE}
 
@@ -1311,96 +1249,46 @@ p <- plot_df %>%
   ggplot(aes(x = n, y=group, fill=target_type)) + 
   geom_bar(position='stack', stat='identity') + 
   geom_vline(xintercept=0) +
-  # scale_fill_manual(values=amylo_cp) + 
   geom_text(aes(label=abs(n)), position = position_stack(vjust=0.5)) +
-  #xlim(-plot_max, plot_max) +
-#  scale_x_continuous(expand = c(0, 0), limits = c(-plot_max, plot_max)) + 
   theme(
     axis.line.y = element_blank(),
     axis.title.y = element_blank()
   ) + 
   xlab(bquote("N"[genes])) 
-  #facet_wrap(~direction, ncol=2) + NoLegend()
-#      ylab(bquote("-log"[10]~"(Adj. P-value)")) +
 
 pdf(paste0(fig_dir, 'degs_bar_', name,'.pdf'), width=5, height=1.75, useDingbats=FALSE)
 p
 dev.off()
 
 
-# # cluster DEGs
-# degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/cluster_Nurr2c_vs_GFP_DEGs.csv')
-# degs <- subset(degs, group %in% seurat_obj$cell_identity)
-# degs$group <- factor(
-#   degs$group,
-#   levels = levels(seurat_obj$cell_identity)
-# )
-# degs_nurr2c <- degs
-
-# # Naive cluster DEGs
-# degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/cluster_Naive_Nurr2c_vs_GFP_DEGs.csv')
-# degs <- subset(degs, group %in% seurat_obj$cell_identity)
-# degs$group <- factor(
-#   degs$group,
-#   levels = levels(seurat_obj$cell_identity)
-# )
-# name <- 'cluster'
-# Nr4a2 <- FALSE
-# degs_naive <- degs
+#---------------------------------------------------------------------------#
+# Comparison of DEG effect sizes from experienced and naive groups
+#---------------------------------------------------------------------------#
 
 # celltype DEGs
 degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Nurr2c_vs_GFP_DEGs.csv')
 degs <- subset(degs, group %in% seurat_obj$cell_type)
-# degs$group <- factor(
-#   degs$group,
-#   levels = levels(seurat_obj$cell_type)
-# )
 degs_nurr2c <- degs
 
 # Naive celltype DEGs
 degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Naive_Nurr2c_vs_GFP_DEGs.csv')
 degs <- subset(degs, group %in% seurat_obj$cell_type)
-# degs$group <- factor(
-#   degs$group,
-#   levels = levels(seurat_obj$cell_type)
-# )
 name <- 'celltype'
 degs_naive <- degs
-
-
-
 
 # only keep neurons
 degs_nurr2c <- subset(degs_nurr2c, group %in% c('MHb-Neuron', 'LHb-Neuron', 'PHb-Neuron'))
 degs_naive <- subset(degs_naive, group %in% c('MHb-Neuron', 'LHb-Neuron', 'PHb-Neuron'))
 
-
-
-
-# primary 
-
-
-
-# secondary 
-# other
-
-
-
 gene_option <- 'primary'
 gene_option <- 'secondary'
 gene_option <- 'other'
-
-
 
 # plot settings
 groups <- unique(degs_nurr2c$group)
 plot_list <- list()
 cor_list <- c()
 signif_only <- FALSE
-
-# run loop over each group
-# initialize progress bar
-
 
 logfc_thresh <- 0.25
 
@@ -1500,15 +1388,11 @@ annotations <- data.frame(
     geom_text(inherit.aes=FALSE, data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText))
 
   plot_list[[cur_group]] <- p
+
 }
 
 
-out <- paste0(fig_dir, 'deg_corr_combined_',gene_option,'22.pdf')
-
-# # cluster
-# pdf(out, width=18, height=12)
-# wrap_plots(plot_list, ncol=6)
-# dev.off()
+out <- paste0(fig_dir, 'deg_corr_combined_',gene_option,'.pdf')
 
 plot_list <- lapply(plot_list, function(x){
   x + theme(
@@ -1530,19 +1414,98 @@ wrap_plots(plot_list, ncol=6)
 dev.off()
 
 
+
 ```
 
-GO term enrichment analysis 
+GO term enrichment analysis for DEGs 
+
+Figures 4F-H and 5F-G
 
 ```{r eval=FALSE}
 
+library(enrichr)
+
+dbs<-c('GO_Biological_Process_2018','GO_Cellular_Component_2018','GO_Molecular_Function_2018', 'WikiPathways_2019_Mouse', 'KEGG_2019_Mouse')
+
+dir.create(paste0(fig_dir, name, '/enrichr/'))
+
+# celltype DEGs
+degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Nurr2c_vs_GFP_DEGs.csv')
+degs <- subset(degs, group %in% seurat_obj$cell_type)
+degs$group <- factor(
+  degs$group,
+  levels = levels(seurat_obj$cell_type)
+)
+name <- 'celltype'
+Nr4a2 <- FALSE
+nlabel <- 5
+color1 <- 'darkgoldenrod3'; color2 <- 'hotpink3'
+
+# Naive celltype DEGs
+degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Naive_Nurr2c_vs_GFP_DEGs.csv')
+degs <- subset(degs, group %in% seurat_obj$cell_type)
+degs$group <- factor(
+  degs$group,
+  levels = levels(seurat_obj$cell_type)
+)
+name <- 'celltype_naive'
+Nr4a2 <- TRUE
+nlabel <- 5
+color2 <- "#643D78"; color1 <- "#14703F"
+
+# subset the neurons (this doesn't work for cluster level info)
+degs <- subset(degs, group %in% c('MHb-Neuron', 'LHb-Neuron', 'PHb-Neuron'))
+degs$group <- droplevels(degs$group)
+
+clusters <- unique(degs$group)
+
+tmp <- data.frame()
+for(cur_celltype in clusters){
+
+
+
+combined_output <- data.frame()
+for(cur_group in clusters){
+
+  print(cur_group)
+  genes.up <- degs %>% subset(group == cur_group & p_val_adj <= 0.05 & avg_log2FC >= 0.25)  %>% .$gene %>% as.character
+  genes.down <- degs %>% subset(group == cur_group & p_val_adj <= 0.05 & avg_log2FC <= -0.25)  %>% .$gene %>% as.character
+
+  enriched_up <- enrichr(genes.up,dbs)
+  enriched_down <- enrichr(genes.down,dbs)
+
+  for(db in dbs){
+    cur_df_up <- enriched_up[[db]]
+    cur_df_down <- enriched_down[[db]]
+
+    if (nrow(cur_df_up) > 1){
+      cur_df_up$db <- db
+      cur_df_up$group <- cur_group
+      cur_df_up$upregulated <- TRUE
+      combined_output <- rbind(combined_output, cur_df_up)
+    }
+
+    if (nrow(cur_df_down) > 1){
+      cur_df_down$db <- db
+      cur_df_down$group <- cur_group
+      cur_df_down$upregulated <- FALSE
+      combined_output <- rbind(combined_output, cur_df_down)
+    }
+
+  }
+}
+
+write.csv(combined_output, file=paste0('enrichr_tables/', name, '_GO_terms.csv'), quote=FALSE, row.names=FALSE)
+
+#--------------------------------------------------------#
+# Plotting
+#--------------------------------------------------------#
 
 # re-load table:
 combined_output <- read.delim(paste0(data_dir, 'Nurr2c_Neuron_DEGs_GO_terms_signif.tsv'), sep='\t', header=1)
 
 selected_terms <- read.delim(paste0(data_dir, 'Nurr2c_Neuron_DEGs_GO_terms_selected.txt'), sep='\t', header=1)
 selected_terms$Term <- str_replace(selected_terms$Term, " \\s*\\([^\\)]+\\)", "")
-
 
 p <- selected_terms  %>% subset(group == 'MHb-Neuron') %>%
   ggplot(aes(x=-log(Combined.Score), y=reorder(Term, Combined.Score), fill=group))+
@@ -1591,136 +1554,3 @@ dev.off()
 
 ```
 
-
-
-
-
-
-Correlate the new and the old DEGs 
-
-```{r eval=FALSE}
-
-degs_old <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/DEGs/data/celltype_Nurr2c_vs_GFP.csv')
-degs_old <- subset(degs_old, group %in% seurat_obj$cell_type)
-degs_old$group <- factor(
-  degs_old$group,
-  levels = levels(seurat_obj$cell_type)
-)
-degs_naive <- degs_old
-
-# celltype DEGs
-degs <- read.csv(file='/dfs7/swaruplab/smorabit/collab/woodlab/cocaine_mouse_2021/Nurr2c_vs_GFP/revision/DEGs/data/celltype_Nurr2c_vs_GFP_DEGs.csv')
-degs <- subset(degs, group %in% seurat_obj$cell_type)
-degs$group <- factor(
-  degs$group,
-  levels = levels(seurat_obj$cell_type)
-)
-name <- 'celltype'
-Nr4a2 <- TRUE
-nlabel <- 5
-color1 <- 'darkgoldenrod3'; color2 <- 'hotpink3'
-degs_nurr2c <- degs
-
-
-
-
-
-# plot settings
-groups <- as.character(unique(degs_naive$group))
-plot_list <- list()
-cor_list <- c()
-signif_only <- FALSE
-
-# run loop over each group
-# initialize progress bar
-pb <- utils::txtProgressBar(min = 0, max = length(groups), style = 3, width = 50, char = "=")
-counter <- 1
-
-
-for(cur_group in groups){
-  print(cur_group)
-  setTxtProgressBar(pb, counter)
-
-
-  cur_degs1 <- subset(degs_nurr2c, group == cur_group)
-  cur_degs2 <- subset(degs_naive, group == cur_group)
-
-  genes.keep <- intersect(cur_degs1$gene, cur_degs2$gene)
-  cur_degs1 <- subset(cur_degs1, gene %in% genes.keep)
-  cur_degs2 <- subset(cur_degs2, gene %in% genes.keep)
-
-  # make sure they are in the same order:
-  rownames(cur_degs1) <- cur_degs1$gene
-  rownames(cur_degs2) <- cur_degs2$gene
-  cur_degs2 <- cur_degs2[cur_degs1$gene,]
-
-  # join the two dataframes
-  plot_df <- dplyr::inner_join(cur_degs1, cur_degs2, by = 'gene')
-
-  logfc_thresh <- 0.05
-
-  #
-  plot_df$group <- ifelse(plot_df$avg_log2FC.x >= logfc_thresh & plot_df$avg_log2FC.y >= logfc_thresh, "Consistent", "")
-  plot_df$group <- ifelse(plot_df$avg_log2FC.x <= -logfc_thresh & plot_df$avg_log2FC.y <= -logfc_thresh, "Consistent", plot_df$group)
-  plot_df$group <- ifelse(plot_df$avg_log2FC.x >= logfc_thresh & plot_df$avg_log2FC.y <= -logfc_thresh, "Inconsistent", plot_df$group)
-  plot_df$group <- ifelse(plot_df$avg_log2FC.x <= -logfc_thresh & plot_df$avg_log2FC.y >= logfc_thresh, "Inconsistent", plot_df$group)
-  group_colors <- c('grey', 'dodgerblue', 'seagreen')
-
-  if(signif_only){
-    plot_df <- subset(plot_df, p_val_adj.x < 0.05 | p_val_adj.y < 0.05)
-    if(nrow(plot_df) == 0){next}
-  }
-
-  cur_cor <-  cor(x=as.numeric(plot_df$avg_log2FC.x), y=as.numeric(plot_df$avg_log2FC.y))
-  cor_list <- c(cor_list, cur_cor)
-  print(table(plot_df$group))
-  print(dim(plot_df))
-
-  plot_range <- max(max(plot_df$avg_log2FC.x), max(plot_df$avg_log2FC.y))
-  p <- plot_df %>%
-    ggplot(aes(x = avg_log2FC.x, y = avg_log2FC.y, color=group)) +
-    geom_hline(yintercept = 0, linetype='dashed', color='grey') +
-    geom_vline(xintercept = 0, linetype='dashed', color='grey') +
-    ggrastr::rasterise(geom_point(), dpi=500) +
-    scale_color_manual(values=group_colors) +
-    geom_smooth(inherit.aes=FALSE, data=plot_df, mapping = aes(x = avg_log2FC.x, y = avg_log2FC.y), method='lm', color='black') +
-    stat_cor(inherit.aes=FALSE, data=plot_df, mapping = aes(x = avg_log2FC.x, y = avg_log2FC.y), method='pearson') +
-    xlim(c(-plot_range, plot_range)) +
-    ylim(c(-plot_range, plot_range)) +
-    theme(
-      axis.line.x = element_blank(),
-      axis.line.y = element_blank(),
-      panel.border = element_rect(colour = "black", fill=NA, size=1),
-      plot.title = element_text(hjust=0.5)
-    ) +
-    coord_fixed(ratio=1) + NoLegend() +
-    xlab(bquote("NURR2C Average log"[2]~"(Fold Change)")) +
-    ylab(bquote("Naive Average log"[2]~"(Fold Change)")) +
-    ggtitle(cur_group)
-    #annotate("text", label=paste0("N=",sum(plot_df$group == 'Consistent')), x=-plot_range + 0.2, y=-plot_range+0.2, color='dodgerblue')
-
-  plot_list[[cur_group]] <- p
-
-  # update progress bar
-  counter <- counter+1
-}
-
-# close progress bar
-close(pb)
-
-names(cor_list) <- names(plot_list)
-plot_list <- plot_list[rev(order(cor_list))]
-
-plot_list <- lapply(plot_list, function(x){
-  x + theme(
-    axis.title.x = element_blank(),
-    axis.title.y = element_blank(),
-    plot.margin = margin(0,0,0,0),
-  )
-})
-
-pdf(paste0(fig_dir, 'deg_corr_combined_old_all2.pdf'), width=18, height=6.5)
-wrap_plots(plot_list, ncol=6)
-dev.off()
-
-```
