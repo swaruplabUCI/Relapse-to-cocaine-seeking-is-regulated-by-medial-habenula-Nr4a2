@@ -9,7 +9,20 @@ of the transcription factor Nr4a2. Here we list the major sections of the paper 
 analysis steps in each part.
 
 
+## Processing sequencing data and quantifying gene expression
+
+snRNA-seq was performed using the 10X Genomics kit, and we used CellRanger to quantify gene expression 
+from the raw sequencing reads. After running CellRanger, ambient RNA was removed using cellbender. 
+
+* [preprocessing scripts](preprocessing/)
+
 ## Clustering analysis (Figure 2)
+
+In our snRNA-seq dataset we had four different groups of mice: NURR2C and GFP mice that were
+behaviorally experienced and behaviorally naive. The behaviorally naive and behaviorally experienced 
+groups were analyzed separately before performing an integrated analysis. 
+
+* [Behaviorally naive clustering analysis](clustering/scanpy_processing_april2023.ipynb)
 
 ## Transcription factor (TF) network analysis (Figure 3)
 
