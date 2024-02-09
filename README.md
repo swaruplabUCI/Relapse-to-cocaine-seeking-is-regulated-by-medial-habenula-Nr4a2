@@ -8,6 +8,10 @@ study the molecular changes following a cocaine reinstatement behavioral experim
 of the transcription factor Nr4a2. Here we list the major sections of the paper and provide links to the data
 analysis steps in each part.
 
+## snRNA-seq data generated in this study
+
+The raw and processed snRNA-seq data generated in this study has been deposited on the NCBI Gene Expression Omnibus (GEO) at accession number XXXXX (will ammend to actual link upon official publication). 
+
 ## Code to program the cocaine reinstatement behavioral experiment
 
 We supply the script that was used during the cocaine reinstatement behavioral experiment.
