@@ -1,0 +1,122 @@
+\FR5 program; 3-SEC INFUSION VOLUME for DRUG delivery
+\Written by Paul J Kenny
+\Date AUGUST 2007
+\Modified by Jessica Childs December 2019 to include tone with cue light presentation. Cue/tone time shortened from 20s to 5s.
+
+\This section is for inputs
+^Lever1 = 1
+^Lever2 = 2
+
+\This section is for outputs
+^Cue1 = 5 \ In this code, this is a cue light
+^Reward = 10   \ In this code, this is a DRUG PUMP
+^Cue2 = 8\ In this code, this is a tone
+
+\DEFINED VARIABLES
+\A = NUMBER OF ACTIVE LEVER PRESSES
+\B = NUMBER OF INACTIVE LEVER PRESSES
+\E = DATA ARRAY OF ACTIVE LEVER PRESSES
+\F = DATA ARRAY OF INACTIVE LEVER PRESSES
+\G = DATA ARRAY OF REWARDS
+\M = MINUTES
+\X = FIXED RATIO
+\N = SESSION TIMER
+\Q = MAXIMUM REWARD
+
+
+VAR_ALIAS Fixed ratio = X
+VAR_ALIAS Session duration (min) = M
+VAR_ALIAS Maximum reward (min) = Q
+
+DIM E = 250
+DIM F = 250
+DIM G = 250
+
+\ Z-PULSES USED IN THIS PROGRAM
+\ Z1 = Activation of Cue-light after FR5.
+\ Z2 = Delivery of Reward after FR5.
+\ Z3 = End of Session Signal.
+
+
+\*******************************************************************************************
+\Main control logic for "FR" and Cue-light activation
+\*******************************************************************************************
+S.S.1,
+S1,
+  0.001": SET X = 5; SET M = 60; SET Q = 55 ---> S2
+
+S2,
+  #START: ON ^Lever1, ^Lever2  ---> S3
+
+S3,
+  X#R^Lever2: ON ^Cue1; ON ^Cue2; Z1 ---> S4
+
+S4,
+3": OFF ^Cue1; OFF ^Cue2 ---> S3
+#Z3: ---> S1
+
+\*******************************************************************************************
+\This is the state set that contains the response count and display of the active lever
+\*******************************************************************************************
+S.S.2,
+S1,
+  #Start: SHOW 2,Lever2,A ---> S2
+
+S2,
+  #R^Lever2: ADD A; SET E(A) = n ;SHOW 2,ACTIVE,A ---> SX
+#Z3: ---> S1
+
+
+\*******************************************************************************************
+\This is the state set that contains the response count and display of the inactive lever
+\*******************************************************************************************
+S.S.3,
+S1,
+  #Start: SHOW 3,Lever1,B ---> S2
+
+S2,
+  #R^Lever1: ADD B; SET F(B) = n; SHOW 3,INACTIVE,B---> SX
+#Z3: ---> S1
+
+
+\*******************************************************************************************
+\Main control logic for delivery of Reward after completion of FR schedule
+\*******************************************************************************************
+S.S.4,
+S1,
+  #Z1: On ^REWARD; Z2 ---> S2
+
+S2,
+  3": OFF ^REWARD ---> S1
+#Z3: ---> S1
+
+
+\*******************************************************************************************
+\Reward counter
+\*******************************************************************************************
+S.S.5,
+S1,
+  #Start: SHOW 5,REWARD,C ---> S2
+
+S2,
+  #Z1: ADD C; SET G(C) = n ; SHOW 5,REWARD,C ---> SX
+
+#Z3: ---> S1
+
+
+\*******************************************************************************************
+\Session Timer
+\*******************************************************************************************
+S.S.6,
+S1,
+  #START: SHOW 1,Sess_n,N ---> S2
+
+S2,
+  1": ADD N; SHOW 1, Sess_n,N;
+      IF (N/60 >= M) OR (C >= Q) [@True, @False]
+
+        @True: Z3 ---> S3
+                @False: ---> SX
+
+S3,
+  3": OFF ^Lever1, ^Lever2 ---> STOPABORTFLUSH
