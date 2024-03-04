@@ -10,7 +10,7 @@ analysis steps in each part.
 
 ## snRNA-seq data generated in this study
 
-The raw and processed snRNA-seq data generated in this study has been deposited on the NCBI Gene Expression Omnibus (GEO) at accession number XXXXX (will ammend to actual link upon official publication). 
+The raw and processed snRNA-seq data (Seurat format) generated in this study has been deposited on the NCBI Gene Expression Omnibus (GEO) at accession number [GSE208081](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE208081). 
 
 ## Code to program the cocaine reinstatement behavioral experiment
 
