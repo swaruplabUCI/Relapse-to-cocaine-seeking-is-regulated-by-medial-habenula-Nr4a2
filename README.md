@@ -1,4 +1,4 @@
-# Relapse to cocaine-seeking is regulated by medial habenula Nr4a2 in mice
+# Relapse to cocaine-seeking is regulated by medial habenula NR4A2/NURR1 in mice
 Childs & Morabito et al. 2024 (Cell Reports, in press)
 
 This Repository contains the code used for data processing and analysis in our manuscript
